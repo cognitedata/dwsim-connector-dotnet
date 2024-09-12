@@ -1,0 +1,13 @@
+{
+	"target_project": "../Service/Service.csproj",
+	"target_configuration": "Release",
+	"target_runtime": "win-x64",
+	"product_name": "Cognite DWSIM Connector",
+	"product_short_name": "DwsimConnector",
+	"exe_name": "Service.exe",
+	"config_dir": "../Connector/config",
+	"service": "true",
+	"service_args": "-s",
+	"upgrade_guid": "3AE47272-FAD2-499E-A5FF-22F4368B2EF5",
+	"output_name": "DwsimConnectorInstaller"
+}

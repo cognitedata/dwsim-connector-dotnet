@@ -1,0 +1,86 @@
+name: Release connector
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  common:
+    uses: ./.github/workflows/common.yml
+    secrets: inherit
+  
+  publish-installer:
+    runs-on: windows-latest
+    environment: CD
+    if: ${{ needs.common.outputs.should-release == 0 }}
+    needs:
+      - common
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Install markdown-pdf
+        run: npm install -g markdown-pdf@11.0.0
+      
+      - name: Convert Markdown to PDF
+        run: markdown-pdf Documentation.md
+
+      - name: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows artifacts
+          path: ./
+      
+      - name: create release
+        uses: actions/create-release@v1
+        id: github-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tag_name: ${{ needs.common.outputs.version }}
+          release_name: DWSIM Connector ${{ needs.common.outputs.version }}
+
+          draft: false
+          prerelease: true
+      
+      - name: upload release msi
+        uses: actions/upload-release-asset@v1
+        id: github-release-msi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.github-release.outputs.upload_url }}
+          asset_path: .\DwsimConnectorInstaller-${{needs.common.outputs.version }}.msi
+          asset_name: DwsimConnectorInstaller-${{ needs.common.outputs.version }}.msi
+          asset_content_type: application/octet-stream
+
+      - name: upload release binary
+        uses: actions/upload-release-asset@v1
+        id: github-release-binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.github-release.outputs.upload_url }}
+          asset_path: .\Service.exe
+          asset_name: Service.exe
+          asset_content_type: application/octet-stream
+      
+      - name: Install publisher
+        shell: bash
+        run: pip install cognite-extractor-publisher --extra-index-url "https://${{ secrets.ARTIFACTORY_READONLY_TOKEN_USER }}:${{ secrets.ARTIFACTORY_READONLY_TOKEN }}@cognite.jfrog.io/cognite/api/pypi/snakepit/simple"
+    
+      - name: publish connector
+        env:
+          EXTRACTOR_DOWNLOAD_API_ADMIN_SECRET: ${{ secrets.EXTRACTOR_DOWNLOAD_ADMIN_SECRET }}
+        run: publish-extractor publish --manifest manifest.yml --version ${{ needs.common.outputs.version }}

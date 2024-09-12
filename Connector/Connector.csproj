@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- You may want to uncomment this to debug locally -->
+    <!-- <PlatformTarget>x64</PlatformTarget>
+    <Configuration>Debug</Configuration> -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cognite.Simulator.Utils" Version="1.0.0-alpha-054" />
+  </ItemGroup>
+
+  <!-- Uncomment below to use libraries built locally -->
+  <!-- <ItemGroup>
+    <PackageReference Include="Cognite.ExtractorUtils" Version="1.18.0" />
+    <PackageReference Include="Cognite.Extensions" Version="1.18.0" />
+    <ProjectReference Include="..\..\dotnet-extractor-utils\ExtractorUtils\ExtractorUtils.csproj" />
+    <ProjectReference Include="..\..\dotnet-extractor-utils\Cognite.Extensions\Cognite.Extensions.csproj" />
+  </ItemGroup> -->
+  <!-- <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <ProjectReference Include="..\..\dotnet-simulator-utils\Cognite.DataProcessing\Cognite.DataProcessing.csproj" />
+    <ProjectReference Include="..\..\dotnet-simulator-utils\Cognite.Simulator.Extensions\Cognite.Simulator.Extensions.csproj" />
+    <ProjectReference Include="..\..\dotnet-simulator-utils\Cognite.Simulator.Utils\Cognite.Simulator.Utils.csproj" />
+  </ItemGroup> -->
+</Project>

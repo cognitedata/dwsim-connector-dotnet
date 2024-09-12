@@ -1,0 +1,15 @@
+*/obj/*
+*/bin/*
+config.yml
+.envrc
+.env
+.DS_Store
+files/*
+logs/*
+*.db
+.vscode/*
+configurations/*
+.vs/*
+*/buildoutput/*
+Service/configurations/*
+Service/files/*
