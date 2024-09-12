@@ -1,0 +1,120 @@
+artifacts:
+ - name: DwsimConnectorInstaller-{version}.msi
+   path: DwsimConnectorInstaller-{version}.msi
+   platform: windows
+ - name: DwsimConnector-{version}.pdf
+   path: Documentation.pdf
+   platform: docs
+   displayName: Connector Documentation
+
+extractor:
+  externalId: dwsim
+  name: Cognite DWSIM Connector
+  description: Integrates the DWSIM simulator with CDF
+  documentation: >
+    The Cognite DWSIM Connector integrates the DWSIM simulator with CDF. The connector should be configured and installed in the same host machine running the simulator. 
+    It reads model files and simulation configurations from CDF, invokes DWSIM to run the simulations, and saves the results back to CDF as time series.
+  tags: ["simulator", "dwsim", "opensource"]
+  type: "unreleased"
+  links:
+    - name: Documentation (WIP)
+      url: "https://pr-1064.docs.preview.cogniteapp.com/cdf/integration/concepts/simulator/"
+      type: "externalDocumentation"
+  image: logo.png
+
+versions:
+  "1.0.0-alpha-117":
+    description: Optional data sampling
+    changelog:
+      added:
+        - "Added support for optional data sampling"
+        - "Historical order of simulation runs"
+  "1.0.0-alpha-116":
+    description: Add simulator definition
+    changelog:
+      added:
+        - "Added simulator definition (containing units, simulator info, model file extension) etc to initialize the simulator on the Cognite Data Fusion API."
+  "1.0.0-alpha-115":
+    description: Attempt to fix automation slowness
+    changelog:
+      fixed:
+        - "Fix memory leak due to a pile-up of DWSIM flowsheet objects"
+  "1.0.0-alpha-114":
+    description: Add array values support
+    changelog:
+      added:
+        - "Support for getting & setting material stream composition"
+        - "Support for getting material stream components"
+  "1.0.0-alpha-113":
+    description: Support time series inputs overrides
+  "1.0.0-alpha-112":
+    description: Publish binary
+  "1.0.0-alpha-111":
+    description: Release binary
+  "1.0.0-alpha-110":
+    description: Fix connector version in binary
+  "1.0.0-alpha-109":
+    description: Update dotnet-simulator-utils, using default connector runtime from utils now
+  "1.0.0-alpha-108":
+    description: Support model revision re-parsing
+  "1.0.0-alpha-107":
+    description: Adopt the latest version of simulator utils
+  "1.0.0-alpha-106":
+    description: Support breaking changes in the simulator integration API
+    changelog:
+      fixed:
+        - "Breaking changes in the simulator routine units (quantity)"
+  "1.0.0-alpha-105":
+    description: Model revision parameter per simulation run
+    changelog:
+      added:
+        - "Added support for custom model revision per simulation run"
+      fixed:
+        - "Fixed model parsing logic and logs"
+  "1.0.0-alpha-104":
+    description: Minor improvements and bug fixes
+    changelog:
+      fixed:
+        - "Minor improvements and bug fixes"
+      added:
+        - "Support model parsing logs"
+  "1.0.0-alpha-103":
+    description: Extended inputs and outputs, overrides
+    changelog:
+      added:
+        - "Added support for extended inputs and outputs, as well as input overrides"
+  "1.0.0-alpha-102":
+    description: Minor improvements
+    changelog:
+      added:
+        - "Added support for the remote API logs for the simulation runs"
+  "1.0.0-alpha-101":
+    description: Minor improvements
+    changelog:
+      added:
+        - "Added support for the simulationTime property on simulation run object"
+  "1.0.0-alpha-100":
+    description: Powered by the new simulator integration API
+    changelog:
+      added:
+        - "Added support for the new simulator integation API (breaking change)"
+  "1.0.0-alpha-007":
+    description: Cognite DWSIM connector
+    changelog:
+      added:
+        - "Added support for remote config"
+  "1.0.0-alpha-006":
+    description: Cognite DWSIM connector
+    changelog:
+      added:
+        - "Upload documentation pdf to CDF"
+  "1.0.0-alpha-005":
+    description: Cognite DWSIM connector
+    changelog:
+      added:
+        - "Signed binary"
+  "1.0.0-alpha-001":
+    description: Cognite DWSIM connector
+    changelog:
+      added:
+        - "First alpha version"

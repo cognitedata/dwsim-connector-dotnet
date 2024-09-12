@@ -1,0 +1,36 @@
+version: 1
+
+# uncomment below to enable config from extraction pipeline
+# type: remote
+cognite:
+  project: ${CDF_PROJECT}
+  host: ${CDF_HOST}
+  idp-authentication:
+    tenant: ${CDF_TENANT}
+    client-id: ${CDF_CLIENT_ID}
+    secret: ${CDF_SECRET}
+    scopes:
+      - ${CDF_HOST}/.default
+  # uncomment below to enable extraction pipeline
+  # extraction-pipeline: 
+  #   pipeline-id: "pipeline name"
+
+connector:
+  name-prefix: "dwsim-connector@"
+  add-machine-name-suffix: true
+
+simulator:
+  name: "DWSIM"
+  data-set-id: ${CDF_CONNECTOR_DATASET}
+
+automation:
+  dwsim-installation-path: "C:/Users/user-name/AppData/Local/DWSIM"
+
+state-store:
+  location: "state.db"
+  database: LiteDb
+
+logger:
+  file:
+    level: "information"
+    path: "logs/log.txt"

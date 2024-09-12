@@ -1,0 +1,130 @@
+name: Build and test connector
+
+on:
+    workflow_call:
+        outputs:
+            version:
+                description: Release version
+                value: ${{ jobs.prerequisites.outputs.version }}
+            should-release:
+                description: Checks if release would occur
+                value: ${{ jobs.prerequisites.outputs.should-release }}
+            branch:
+                description: Branch
+                value: ${{ jobs.prerequisites.outputs.branch }}
+        secrets:
+          ARTIFACTORY_READONLY_TOKEN:
+            required: true
+          ARTIFACTORY_READONLY_TOKEN_USER:
+            required: true
+        
+jobs:
+    prerequisites:
+        runs-on: ubuntu-latest
+        outputs:
+          should-release: ${{ steps.confirm-release.outputs.test }}
+          branch: ${{ steps.current-branch.outputs.branch }}
+          version: ${{ steps.get-version.outputs.version }}
+        steps:
+            - name: checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: update pip
+              run: pip install --upgrade pip
+
+            - name: install shyaml
+              run: pip install shyaml
+
+            - name: get-version
+              id: get-version
+              run: echo "version=$(cat manifest.yml | shyaml keys-0 versions | xargs -0 | cut -d\  -f1)" >> "$GITHUB_OUTPUT"
+
+            - name: debug-version
+              run: echo ${{ steps.get-version.outputs.version }}
+
+            - name: confirm release
+              id: confirm-release
+              run: echo "test=$(git tag --list '${{ steps.get-version.outputs.version }}' | wc -l | sed s/\ //g)" >> $GITHUB_OUTPUT
+
+            - name: Get branch name
+              id: current-branch
+              run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
+ 
+            - name: Message about build
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                    if (${{ steps.confirm-release.outputs.test }} == 0) {
+                        core.notice('Will release version ${{ steps.get-version.outputs.version }}...')
+                    } else {
+                        core.warning('Will not create release for version ${{ steps.get-version.outputs.version }} because it already exists.')
+                    }
+            
+    build-installer:
+        runs-on: windows-latest
+        environment: ${{ needs.prerequisites.outputs.branch == 'main' && 'CD' || 'CI' }}
+        needs:
+          - prerequisites
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+          
+          - name: Setup .NET
+            uses: actions/setup-dotnet@v4
+            with:
+                dotnet-version: 6.0.x
+          
+          - name: Restore tools
+            run: dotnet tool restore
+          
+          - name: Add msbuild to path
+            uses: microsoft/setup-msbuild@v1.3
+
+          - name: Build and Publish Service binary
+            working-directory: .\Service
+            run: dotnet publish -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -p:Version=${{ needs.prerequisites.outputs.version }} -p:InformationalVersion="${{ needs.prerequisites.outputs.version }}" -p:DebugType=none -p:DebugSymbols=false -o ./bin/portable
+            shell: bash
+          
+          - name: Sign service binary
+            if: ${{ needs.prerequisites.outputs.branch == 'main' }}
+            env:
+                CERTIFICATE_HOST: ${{ secrets.CODE_SIGNING_CERT_HOST }}
+                CERTIFICATE_HOST_API_KEY: ${{ secrets.CODE_SIGNING_CERT_HOST_API_KEY }}
+                CERTIFICATE_SHA1_HASH: ${{ secrets.CODE_SIGNING_CERT_SHA1_HASH }}
+                CLIENT_CERTIFICATE: ${{ secrets.CODE_SIGNING_CLIENT_CERT }}
+                CLIENT_CERTIFICATE_PASSWORD: ${{ secrets.CODE_SIGNING_CLIENT_CERT_PASSWORD }}
+                KEYPAIR_ALIAS: ${{ secrets.CODE_SIGNING_KEYPAIR_ALIAS }}
+            uses: cognitedata/code-sign-action/@v3
+            with:
+              path-to-binary: .\Service\bin\portable\Service.exe
+
+          - name: Build Installer
+            working-directory: .\Installer
+            run: .\build.ps1 -b msbuild -v ${{ needs.prerequisites.outputs.version }} -d "DWSIM connector Installer" -c .\setup-config.json
+            shell: powershell
+
+          - name: Sign Installer
+            if: ${{ needs.prerequisites.outputs.branch == 'main' }}
+            env:
+                CERTIFICATE_HOST: ${{ secrets.CODE_SIGNING_CERT_HOST }}
+                CERTIFICATE_HOST_API_KEY: ${{ secrets.CODE_SIGNING_CERT_HOST_API_KEY }}
+                CERTIFICATE_SHA1_HASH: ${{ secrets.CODE_SIGNING_CERT_SHA1_HASH }}
+                CLIENT_CERTIFICATE: ${{ secrets.CODE_SIGNING_CLIENT_CERT }}
+                CLIENT_CERTIFICATE_PASSWORD: ${{ secrets.CODE_SIGNING_CLIENT_CERT_PASSWORD }}
+                KEYPAIR_ALIAS: ${{ secrets.CODE_SIGNING_KEYPAIR_ALIAS }}
+            uses: cognitedata/code-sign-action/@v3
+            with:
+              path-to-binary: '.\Installer\bin\Release\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi'
+
+          - run: mkdir .\uploads
+          - run: mv .\Installer\bin\Release\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi .\uploads\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi
+          - run: mv .\Service\bin\portable\Service.exe .\uploads\Service.exe
+          - name: upload artifact
+            if: ${{ needs.prerequisites.outputs.branch == 'main' && needs.prerequisites.outputs.should-release == 0 }}
+            uses: actions/upload-artifact@v4
+            with:
+              name: windows artifacts
+              path: .\uploads\
