@@ -17,8 +17,8 @@ extractor:
   tags: ["simulator", "dwsim", "opensource"]
   type: "unreleased"
   links:
-    - name: Documentation (WIP)
-      url: "https://pr-1064.docs.preview.cogniteapp.com/cdf/integration/concepts/simulator/"
+    - name: About data extraction
+      url: "https://docs.cognite.com/cdf/integration/concepts/extraction/"
       type: "externalDocumentation"
   image: logo.png
 
