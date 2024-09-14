@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cognite.Simulator.Utils" Version="1.0.0-alpha-054" />
+    <PackageReference Include="Cognite.Simulator.Utils" Version="1.0.0-beta-001" />
   </ItemGroup>
 
   <!-- Uncomment below to use libraries built locally -->
