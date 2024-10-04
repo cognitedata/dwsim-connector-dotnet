@@ -13,9 +13,9 @@ on:
                 description: Branch
                 value: ${{ jobs.prerequisites.outputs.branch }}
         secrets:
-          ARTIFACTORY_READONLY_TOKEN:
+          ARTIFACTORY_READONLY_TOKEN_USER_PUBLIC_REPOS:
             required: true
-          ARTIFACTORY_READONLY_TOKEN_USER:
+          ARTIFACTORY_READONLY_TOKEN_PUBLIC_REPOS:
             required: true
         
 jobs:
