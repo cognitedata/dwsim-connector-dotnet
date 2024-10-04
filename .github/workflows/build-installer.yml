@@ -77,8 +77,11 @@ jobs:
           asset_content_type: application/octet-stream
       
       - name: Install publisher
+        env: 
+          PYPI_ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_READONLY_TOKEN_USER_PUBLIC_REPOS }}
+          PYPI_ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_READONLY_TOKEN_PUBLIC_REPOS }}
         shell: bash
-        run: pip install cognite-extractor-publisher --extra-index-url "https://${{ secrets.ARTIFACTORY_READONLY_TOKEN_USER }}:${{ secrets.ARTIFACTORY_READONLY_TOKEN }}@cognite.jfrog.io/cognite/api/pypi/snakepit/simple"
+        run: pip install cognite-extractor-publisher --extra-index-url "https://${PYPI_ARTIFACTORY_USERNAME}:${PYPI_ARTIFACTORY_PASSWORD}@cognite.jfrog.io/cognite/api/pypi/snakepit/simple"
     
       - name: publish connector
         env:
