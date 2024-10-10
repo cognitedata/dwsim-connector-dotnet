@@ -13,7 +13,7 @@ The requirements for DWSIM may be higher, should accommodate for that
 
 - Windows Server 2016 or higher
 - DWSIM installed: The connector was built to integrate with DWSIM version 8.4. Newer versions may work, but they are not tested.
-- .NET 6.0 runtime
+- .NET 8.0 runtime
 
 **Additional CDF requirements**
 

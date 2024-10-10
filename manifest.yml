@@ -23,6 +23,11 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-118":
+    description: Upgrade to .NET 8
+    changelog:
+      added:
+        - "Upgraded to .NET 8. Requires .NET 8 runtime to run the connector."
   "1.0.0-alpha-117":
     description: Optional data sampling
     changelog:
