@@ -23,6 +23,13 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-118":
+    description: Bug fixes and improvements
+    changelog:
+      fixed:
+        - "Fix the issue where the remote (API) logger didn't respect the minimum log level setting."
+        - "Fix the scheduler issue where the simulation was not getting correct UTC run time"
+        - "Fix the issue which caused the connector to get stuck if extraction pipeline enabled and API error occurred"
   "1.0.0-alpha-117":
     description: Optional data sampling
     changelog:
