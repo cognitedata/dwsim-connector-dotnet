@@ -23,6 +23,12 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-120":
+    description: Minor improvements
+    changelog:
+      added:
+        - "Allow minimum log level override per simulation run."
+        - "Adopt new features on the routine list endpoint."
   "1.0.0-alpha-119":
     description: Upgrade to .NET 8
     changelog:
