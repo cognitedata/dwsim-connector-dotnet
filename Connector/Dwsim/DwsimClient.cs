@@ -128,7 +128,7 @@ namespace Connector
 
                     Dictionary<string, SimulatorValueItem> result = new Dictionary<string, SimulatorValueItem>();
 
-                    var routine = new DwsimRoutine(routineRev, model, Server, inputData, _propMap, _unitConverter);
+                    var routine = new DwsimRoutine(routineRev, model, Server, inputData, _propMap, _unitConverter, _logger);
 
                     result = routine.PerformSimulation();
                     return Task.FromResult(result);

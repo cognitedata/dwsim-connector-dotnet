@@ -16,6 +16,7 @@
  
 using Cognite.Simulator.Utils;
 using CogniteSdk.Alpha;
+using Microsoft.Extensions.Logging;
 
 namespace Connector;
 
@@ -33,8 +34,9 @@ internal class DwsimRoutine : RoutineImplementationBase
         dynamic interf,
         Dictionary<string, SimulatorValueItem> inputData,
         Dictionary<string, string> propMap,
-        UnitConverter units) :
-        base(routineRevision, inputData)
+        UnitConverter units,
+        ILogger logger) :
+        base(routineRevision, inputData, logger)
     {
         _model = model;
         _interface = interf;
