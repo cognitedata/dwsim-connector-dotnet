@@ -27,7 +27,7 @@ versions:
     description: Multiple improvements
     changelog:
       added:
-        - "**Breaking** deleted model-library.state-store-interval configuration option. Use model-library.library-update-interval instead.
+        - "**Breaking** deleted model-library.state-store-interval configuration option. Use model-library.library-update-interval instead."
         - "Added more debug logs on simulation routine base methods."
         - "Increased default refresh interval for the model library and routine library to 10 seconds."
         - "Increased the default timeout for the soft restart of the connector to 10 seconds after the failure."
