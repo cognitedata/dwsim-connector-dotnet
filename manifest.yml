@@ -18,11 +18,17 @@ extractor:
   type: "unreleased"
   links:
     - name: Documentation (WIP)
-      url: "https://pr-1064.docs.preview.cogniteapp.com/cdf/integration/concepts/simulator/"
+      url: "https://docs.cognite.com/no/cdf/integration/guides/simulators/simulator_connector_configuration"
       type: "externalDocumentation"
   image: logo.png
 
 versions:
+  "1.0.0-alpha-122":
+    description: Refactored the routine runner
+    changelog:
+      added:
+        - "Refactored the simulation routine runner to match the common pattern on other connectors."
+        - "More granular error handling"
   "1.0.0-alpha-121":
     description: Multiple improvements
     changelog:
