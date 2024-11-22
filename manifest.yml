@@ -23,6 +23,11 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-122":
+    description: Scalability improvements
+    changelog:
+      fixed:
+        - "Improve the scalability of the connector by sending fewer requests to the routine revision list endpoint."
   "1.0.0-alpha-121":
     description: Multiple improvements
     changelog:
