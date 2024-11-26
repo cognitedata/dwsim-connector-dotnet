@@ -1,5 +1,4 @@
 # Cognite DWSIM Connector
-=======================
 
 [![.NET build and test](https://github.com/cognitedata/dwsim-connector-dotnet/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cognitedata/dwsim-connector-dotnet/actions/workflows/build-and-test.yml)
 
