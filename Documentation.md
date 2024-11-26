@@ -19,13 +19,7 @@ The requirements for DWSIM may be higher, should accommodate for that
 
 - If VM is behind a firewall, allow access to endpoint: https://{cluster}.cognitedata.com. For example, if the project is in the Europe 2 (Microsoft) cluster, then this endpoint is https://westeurope-1.cognitedata.com.
 - A Dataset to associate with the simulator data
-- App registration for the connector, belonging to a group with the following capabilities:
-  - ``files:read``, ``files:write``
-  - ``projects:list``
-  - ``groups:list``
-  - ``timeseries:read``, ``timeseries:write``
-  - ``datasets:read``
-  - ``extractionpipelines:read``, ``extractionpipelines:write``
+- App registration for the connector, belonging to a group with the capabilities listed in the [documentation](https://docs.cognite.com/cdf/access/guides/capabilities#simulator-connectors).
 
 ## Installation
 Running the installer on a Windows operating system will present the user with a wizard to guide her through the installation process. The user can then select the destination folder where the connector will be installed. By default, this is **C:\\Cognite\\**. Inside this folder, a working directory is created, named **DwsimConnector**.
