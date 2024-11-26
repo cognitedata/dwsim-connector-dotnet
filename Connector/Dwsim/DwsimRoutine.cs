@@ -160,7 +160,7 @@ internal class DwsimRoutine : RoutineImplementationBase
                 throw new SimulationException(
                     $"Unsupported unit '{unitName}' for property 'Composition'. ReferenceId = '{outputConfig.ReferenceId}'");
             }
-            
+
             // only objects implementing the IMaterialStream interface have the 'GetOverallComposition' method
             try
             {
@@ -261,14 +261,14 @@ internal class DwsimRoutine : RoutineImplementationBase
             if (inputItem.ValueType == SimulatorValueType.DOUBLE_ARRAY)
             {
                 var doubleList = ((SimulatorValue.DoubleArray)wrappedValue).Value;
-                
+
                 // composition is a unitless property, so we should throw an error if a unit is specified
                 if (unitName != null)
                 {
                     throw new SimulationException(
                         $"Unsupported unit '{unitName}' for property 'Composition'. ReferenceId = '{inputItem.ReferenceId}'");
                 }
-                
+
                 // only objects implementing the IMaterialStream interface have the 'SetOverallMolarComposition' method
                 try
                 {
