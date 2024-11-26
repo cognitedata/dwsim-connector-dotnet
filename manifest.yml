@@ -1,28 +1,29 @@
 artifacts:
- - name: DwsimConnectorInstaller-{version}.msi
-   path: DwsimConnectorInstaller-{version}.msi
-   platform: windows
- - name: DwsimConnector-{version}.pdf
-   path: Documentation.pdf
-   platform: docs
-   displayName: Connector Documentation
+  - name: DwsimConnectorInstaller-{version}.msi
+    path: DwsimConnectorInstaller-{version}.msi
+    platform: windows
 
 extractor:
   externalId: dwsim
   name: Cognite DWSIM Connector
-  description: Integrates the DWSIM simulator with CDF
+  description: Integrates the DWSIM simulator with Cognite Data Fusion
   documentation: >
-    The Cognite DWSIM Connector integrates the DWSIM simulator with CDF. The connector should be configured and installed in the same host machine running the simulator. 
-    It reads model files and simulation configurations from CDF, invokes DWSIM to run the simulations, and saves the results back to CDF as time series.
+    The Cognite DWSIM Connector integrates the DWSIM simulator with CDF (Cognite Data Fusion). Once installed at a host machine with access to DWSIM, the connector reads model files and routines defined in CDF simulators API and uses them to run DWSIM simulations on schedule or on demand. The simulation results are saved in CDF as simulation data or, optionally, as time series data points.
   tags: ["simulator", "dwsim", "opensource"]
   type: "unreleased"
   links:
-    - name: Documentation (WIP)
-      url: "https://pr-1064.docs.preview.cogniteapp.com/cdf/integration/concepts/simulator/"
+    - name: Documentation
+      url: "https://docs.cognite.com/cdf/integration/guides/simulators/connectors/"
       type: "externalDocumentation"
   image: logo.png
 
 versions:
+  "1.0.0-alpha-123":
+    description: Updated documentation links
+    changelog:
+      added:
+        - "Updated documentation links to the public simulator connectors documentation."
+
   "1.0.0-alpha-122":
     description: Scalability improvements
     changelog:
