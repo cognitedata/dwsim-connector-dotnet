@@ -1,34 +1,40 @@
 artifacts:
- - name: DwsimConnectorInstaller-{version}.msi
-   path: DwsimConnectorInstaller-{version}.msi
-   platform: windows
- - name: DwsimConnector-{version}.pdf
-   path: Documentation.pdf
-   platform: docs
-   displayName: Connector Documentation
+  - name: DwsimConnectorInstaller-{version}.msi
+    path: DwsimConnectorInstaller-{version}.msi
+    platform: windows
 
 extractor:
   externalId: dwsim
   name: Cognite DWSIM Connector
-  description: Integrates the DWSIM simulator with CDF
+  description: Integrates the DWSIM simulator with Cognite Data Fusion
   documentation: >
-    The Cognite DWSIM Connector integrates the DWSIM simulator with CDF. The connector should be configured and installed in the same host machine running the simulator. 
-    It reads model files and simulation configurations from CDF, invokes DWSIM to run the simulations, and saves the results back to CDF as time series.
+    The Cognite DWSIM Connector integrates the DWSIM simulator with CDF (Cognite Data Fusion). Once installed at a host machine with access to DWSIM, the connector reads model files and routines defined in CDF simulators API and uses them to run DWSIM simulations on schedule or on demand. The simulation results are saved in CDF as simulation data or, optionally, as time series data points.
   tags: ["simulator", "dwsim", "opensource"]
   type: "unreleased"
   links:
-    - name: Documentation (WIP)
-      url: "https://docs.cognite.com/no/cdf/integration/guides/simulators/simulator_connector_configuration"
+    - name: Documentation
+      url: "https://docs.cognite.com/cdf/integration/guides/simulators/connectors/"
       type: "externalDocumentation"
   image: logo.png
 
 versions:
-  "1.0.0-alpha-122":
+  "1.0.0-alpha-124":
     description: Refactored the routine runner
     changelog:
+      changed:
+        - "Refactored the routine runner, making it more similar to other connectors."
+
+  "1.0.0-alpha-123":
+    description: Updated documentation links
+    changelog:
       added:
-        - "Refactored the simulation routine runner to match the common pattern on other connectors."
-        - "More granular error handling"
+        - "Updated documentation links to the public simulator connectors documentation."
+
+  "1.0.0-alpha-122":
+    description: Scalability improvements
+    changelog:
+      fixed:
+        - "Improve the scalability of the connector by sending fewer requests to the routine revision list endpoint."
   "1.0.0-alpha-121":
     description: Multiple improvements
     changelog:

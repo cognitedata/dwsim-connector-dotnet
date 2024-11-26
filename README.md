@@ -1,9 +1,10 @@
-# DWSIM Cognite Data Fusion Connector .NET
+# Cognite DWSIM Connector
 
-DWSIMConnector is a connector that integrates DWSIM simulator with CDF (Cognite Data Fusion). Once installed at a host machine with access to DWSIM, the connector reads model files and routines defined in CDF simulators API and uses them to run DWSIM simulations on schedule. The simulation results are saved in CDF as simulation data or, optionally, as time series data points.
+[![.NET build and test](https://github.com/cognitedata/dwsim-connector-dotnet/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cognitedata/dwsim-connector-dotnet/actions/workflows/build-and-test.yml)
+
+DWSIMConnector is a connector that integrates DWSIM simulator with CDF (Cognite Data Fusion). Once installed at a host machine with access to DWSIM, the connector reads model files and routines defined in CDF simulators API and uses them to run DWSIM simulations on schedule or on demand. The simulation results are saved in CDF as simulation data or, optionally, as time series data points.
 
 This connector uses COM (Component Object Model) to communicate with DWSIM. It extends the [simulator utils](https://github.com/cognitedata/dotnet-simulator-utils) by implementing specific logic for the COM interface, serving as a practical example for creating custom CDF connectors to other COM-compatible simulators.
-
 
 # Running the connector
 
@@ -11,8 +12,7 @@ This connector uses COM (Component Object Model) to communicate with DWSIM. It e
 - Run `dotnet build`
 - Copy the `config/config.example.yml` into the current working directory and rename it to `config.yml`
 - Modify the `config.yml` file with your own Cognite Data Fusion credentials
-- Run `dotnet run Service/Service.csproj`
-
+- Run `dotnet run --project .\Service\Service.csproj --service -w . -r win-x64`
 
 # Building an installer
 
@@ -31,17 +31,17 @@ The connector runtime is a wrapper that runs the entire connector. It connects t
 
 ## The Connector configuration
 
-The connector accepts configuration via a [config.yml](Connector/config/config.example.yml) file. This file contains CDF (Cognite Data Fusion) credentials, local state storage configuration and simulator specific configuration. Simulator specific configuration is nested under the `automation` tag. If you want to define any other variables to be read from that file, you must define them in the [AutomationConfig.cs](Connector/Dwsim/AutomationConfig.cs) file first. 
+The connector accepts configuration via a [config.yml](Connector/config/config.example.yml) file. This file contains CDF (Cognite Data Fusion) credentials, local state storage configuration and simulator specific configuration. Simulator specific configuration is nested under the `automation` tag. If you want to define any other variables to be read from that file, you must define them in the [AutomationConfig.cs](Connector/Dwsim/AutomationConfig.cs) file first.
 
 ## The simulator client
 
-The simulator client is the part which actually connects to the simulator itself and acts as a bridge between CDF and the simulator. It has methods which are used to get the Simulator version, connector version, run a simulation or extract simulator model information. 
+The simulator client is the part which actually connects to the simulator itself and acts as a bridge between CDF and the simulator. It has methods which are used to get the Simulator version, connector version, run a simulation or extract simulator model information.
 
 [Source](Connector/Dwsim/DwsimClient.cs)
 
 ## The routine
 
-This is used by the simulation runner to run a routine, it implements methods to set data into a simulation and get data from a simulation. 
+This is used by the simulation runner to run a routine, it implements methods to set data into a simulation and get data from a simulation.
 
 [Source](Connector/Dwsim/DwsimRoutine.cs)
 
