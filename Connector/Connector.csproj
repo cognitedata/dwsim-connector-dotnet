@@ -15,10 +15,6 @@
     <PackageReference Include="Cognite.Simulator.Utils" Version="1.0.0-beta-009" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="Dwsim\Utils.cs" />
-  </ItemGroup>
-
   <!-- Uncomment below to use libraries built locally -->
   <!-- <ItemGroup>
     <PackageReference Include="Cognite.ExtractorUtils" Version="1.18.0" />
