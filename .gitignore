@@ -13,3 +13,4 @@ configurations/*
 */buildoutput/*
 Service/configurations/*
 Service/files/*
+.idea/*

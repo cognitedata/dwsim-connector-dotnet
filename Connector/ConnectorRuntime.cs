@@ -16,6 +16,7 @@
 
 using Cognite.Simulator.Utils;
 using CogniteSdk.Alpha;
+using Connector.Dwsim;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 

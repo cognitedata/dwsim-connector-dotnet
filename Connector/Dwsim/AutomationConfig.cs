@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 using Cognite.Simulator.Utils.Automation;
 
-namespace Connector;
+namespace Connector.Dwsim;
 
 public class DwsimAutomationConfig : AutomationConfig
 {

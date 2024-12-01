@@ -13,19 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
-using Cognite.Simulator.Utils;
-using Cognite.Simulator.Utils.Automation;
-using CogniteSdk.Alpha;
-using Microsoft.Extensions.Logging;
+
 using System.Collections;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.InteropServices;
+using Cognite.Simulator.Utils;
+using Cognite.Simulator.Utils.Automation;
+using CogniteSdk.Alpha;
+using Microsoft.Extensions.Logging;
 
-namespace Connector
+namespace Connector.Dwsim
 {
     /// <summary>
     /// Wrapper class that 
@@ -40,7 +40,7 @@ namespace Connector
         private readonly UnitConverter _unitConverter;
 
         // Lock to prevent concurrent access to simulator resources
-        private readonly object simulatorLock = new object();
+        private readonly object _simulatorLock = new object();
 
         public DwsimClient(
             ILogger<DwsimClient> logger, DefaultConfig<DwsimAutomationConfig> config)
@@ -72,7 +72,7 @@ namespace Connector
         {
             _logger.LogInformation("Testing DWSIM connection...");
 
-            lock (simulatorLock)
+            lock (_simulatorLock)
             {
                 try
                 {
@@ -91,7 +91,7 @@ namespace Connector
         public bool CanOpenModel(string path)
         {
             _logger.LogDebug("Attempting to open file {Path}", path);
-            lock (simulatorLock)
+            lock (_simulatorLock)
             {
                 try
                 {
@@ -118,7 +118,7 @@ namespace Connector
         public Task<Dictionary<string, SimulatorValueItem>> RunSimulation(DefaultModelFilestate modelState, SimulatorRoutineRevision routineRev, Dictionary<string, SimulatorValueItem> inputData)
         {
             _logger.LogDebug($"- Started running {routineRev.ExternalId} in DWSIM");
-            lock (simulatorLock)
+            lock (_simulatorLock)
             {
                 try
                 {
