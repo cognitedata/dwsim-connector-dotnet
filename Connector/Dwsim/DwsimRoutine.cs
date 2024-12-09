@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 using Cognite.Simulator.Utils;
 using CogniteSdk.Alpha;
 using Microsoft.Extensions.Logging;
 
-namespace Connector;
+namespace Connector.Dwsim;
 
 internal class DwsimRoutine : RoutineImplementationBase
 {
@@ -26,7 +26,7 @@ internal class DwsimRoutine : RoutineImplementationBase
     private readonly dynamic _model;
     private readonly Dictionary<string, string> _propMap;
     private readonly UnitConverter _units;
-
+    private readonly ILogger<DwsimClient> _logger;
 
     public DwsimRoutine(
         SimulatorRoutineRevision routineRevision,
@@ -35,245 +35,344 @@ internal class DwsimRoutine : RoutineImplementationBase
         Dictionary<string, SimulatorValueItem> inputData,
         Dictionary<string, string> propMap,
         UnitConverter units,
-        ILogger logger) :
+        ILogger<DwsimClient> logger) :
         base(routineRevision, inputData, logger)
     {
         _model = model;
         _interface = interf;
         _propMap = propMap;
         _units = units;
-    }
-
-    public override void SetInput(SimulatorRoutineRevisionInput inputConfig, SimulatorValueItem input, Dictionary<string, string> arguments)
-    {
-        var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
-        SetPropertyValue(objectProperty, objectName, input);
-        input.SimulatorObjectReference = new Dictionary<string, string> {
-            { "objectName", objectName },
-            { "objectProperty", objectProperty },
-        };
-    }
-
-    private SimulatorValue GetCompositionValue(dynamic outObj, SimulatorRoutineRevisionOutput outputConfig, string objectName)
-    {
-        if (outputConfig.ValueType != SimulatorValueType.DOUBLE_ARRAY)
-        {
-            throw new SimulationException($"Get error: Unsupported value type {outputConfig.ValueType} for property 'Composition'. Expected DOUBLE_ARRAY");
-        }
-
-        try {
-            double[] composition = outObj.GetOverallComposition();
-            return SimulatorValue.Create(composition);
-        }
-        catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
-        {
-            throw new SimulationException($"Get error: Unrecognized property 'Composition' for object {objectName} {e}");
-        }
-    }
-
-    private SimulatorValue GetComponentsValue(dynamic outObj, SimulatorRoutineRevisionOutput outputConfig, string objectName)
-    {
-        if (outputConfig.ValueType != SimulatorValueType.STRING_ARRAY)
-        {
-            throw new SimulationException($"Get error: Unsupported value type {outputConfig.ValueType} for property 'Components'. Expected STRING_ARRAY");
-        }
-
-        try {
-            string[] components = outObj.ComponentIds;
-            return SimulatorValue.Create(components);
-        }
-        catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
-        {
-            throw new SimulationException($"Get error: Unrecognized property 'Components' for object {objectName} {e}");
-        }
-    }
-        
-
-    public override SimulatorValueItem GetOutput(SimulatorRoutineRevisionOutput outputConfig, Dictionary<string, string> arguments)
-    {
-        var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
-
-        dynamic outObj = _model.GetFlowsheetSimulationObject(objectName);
-        if (outObj == null)
-        {
-            throw new SimulationException($"Get error: Cannot find flowsheet object named '{objectName}'");
-        }
-
-        var resultItem = new SimulatorValueItem()
-        {
-            SimulatorObjectReference = new Dictionary<string, string> {
-                { "objectName", objectName },
-                { "objectProperty", objectProperty },
-            },
-            TimeseriesExternalId = outputConfig.SaveTimeseriesExternalId,
-            ReferenceId = outputConfig.ReferenceId,
-            ValueType = outputConfig.ValueType,
-        };
-
-        // Special logic for "Composition" property
-        if (objectProperty == "Composition")
-        {
-            resultItem.Value = GetCompositionValue(outObj, outputConfig, objectName);;
-            return resultItem;
-        }
-
-        // Special logic for "Components" property
-        if (objectProperty == "Components")
-        {
-            resultItem.Value = GetComponentsValue(outObj, outputConfig, objectName);
-            return resultItem;
-        }
-
-        // Properties that we can read from
-        string[] outObjProps = outObj.GetProperties(3);
-        string propKey = objectProperty;
-
-        // Some properties have different names in the UI and in the simulation model
-        if (!outObjProps.Contains(objectProperty))
-        {
-            // translate from UI label to property ID.
-            var props = _propMap.Where(kvp => kvp.Value == objectProperty && outObjProps.Contains(kvp.Key));
-            if (!props.Any())
-            {
-                throw new SimulationException($"Get error: Unrecognized property '{objectProperty}'");
-            }
-            propKey = props.First().Key;
-        }
-        var value = outObj.GetPropertyValue(propKey);
-        SimulatorValue resultValue;
-        SimulatorValueUnit? outputUnit = null;
-        if (outputConfig.ValueType == SimulatorValueType.DOUBLE && value is double)
-        {
-            if (outputConfig.Unit?.Name != null)
-            {
-                double result = _units.ConvertFromSI(outputConfig.Unit.Name, value);
-                resultValue = SimulatorValue.Create(result);
-                outputUnit = new SimulatorValueUnit()
-                {
-                    Name = outputConfig.Unit?.Name,
-                };
-            }
-            else
-            {
-                resultValue = SimulatorValue.Create(value);
-            }
-        }
-        else if (outputConfig.ValueType == SimulatorValueType.STRING)
-        {
-            resultValue = SimulatorValue.Create(value.ToString());
-        }
-        else
-        {
-            throw new SimulationException($"Get error: Unsupported value type {outputConfig.ValueType} for property {objectProperty} of object {objectName} with value {value}");
-        }
-
-        resultItem.Value = resultValue;
-        resultItem.Unit = outputUnit;
-        return resultItem;
-    }
-
-    public override void RunCommand(Dictionary<string, string> arguments)
-    {
-        if (!arguments.TryGetValue("command", out string? command))
-        {
-            throw new SimulationException($"Command error: Command not defined");
-        }
-        if (command == "Solve")
-        {
-            _interface.CalculateFlowsheet2(_model);
-            if (!_model.Solved)
-            {
-                throw new SimulationException($"Command error: {_model.ErrorMessage}");
-            }
-        }
-        else
-        {
-            throw new SimulationException($"Command error: Invalid command type {command}");
-        }
-    }
-
-    private void SetCompositionValue(dynamic inObj, SimulatorValueItem valueItem, string objectName)
-    {
-        if (valueItem.ValueType == SimulatorValueType.DOUBLE_ARRAY)
-        {
-            var arrValue = ((SimulatorValue.DoubleArray) valueItem.Value)?.Value;
-            try
-            {
-                inObj.SetOverallMolarComposition(arrValue?.ToArray());
-            }
-            catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
-            {
-                throw new SimulationException($"Set error: Unrecognized property 'Composition' for object {objectName} {e}");
-            }
-        }
-        else
-        {
-            throw new SimulationException($"Set error: Unsupported value type {valueItem.ValueType} for property 'Composition'");
-        }
-    }
-
-    private void SetPropertyValue(string propertyName, string objectName, SimulatorValueItem valueItem)
-    {
-        dynamic inObj = _model.GetFlowsheetSimulationObject(objectName);
-        if (inObj == null)
-        {
-            throw new SimulationException($"Set error: Cannot find flowsheet object named '{objectName}'");
-        }
-
-        // Special logic for "Composition" property
-        if (propertyName == "Composition")
-        {
-            SetCompositionValue(inObj, valueItem, objectName);
-            return;
-        }
-
-        // Properties that we can write to
-        string[] inObjProps = inObj.GetProperties(1);
-        string propKey = propertyName;
-        if (!inObjProps.Contains(propertyName))
-        {
-            // translate from UI label to property ID.
-            var props = _propMap.Where(kvp => kvp.Value == propertyName && inObjProps.Contains(kvp.Key));
-            if (!props.Any())
-            {
-                throw new SimulationException($"Set error: Unrecognized property '{propertyName}' for object '{objectName}'");
-            }
-            propKey = props.First().Key;
-        }
-        bool success = false;
-
-        if (valueItem.ValueType == SimulatorValueType.DOUBLE)
-        {
-            var rawValue = ((SimulatorValue.Double) valueItem.Value).Value;
-            double value = rawValue;
-            if (valueItem.Unit?.Name != null)
-            {
-                value = _units.ConvertToSI(valueItem.Unit.Name, rawValue);
-            }
-            success = inObj.SetPropertyValue(propKey, value);
-        }
-        else if (valueItem.ValueType == SimulatorValueType.STRING)
-        {
-            var rawValue = ((SimulatorValue.String) valueItem.Value).Value;
-            success = inObj.SetPropertyValue(propKey, rawValue);
-        }
-        if (!success)
-        {
-            throw new SimulationException($"Set error: Failed to set property {propertyName} ({propKey}) to {valueItem} unit: {valueItem?.Unit?.Name}");
-        }
+        _logger = logger;
     }
 
     private (string Name, string Property) GetObjectNameAndProperty(Dictionary<string, string> arguments)
     {
         if (!arguments.TryGetValue("objectProperty", out string objectProperty))
         {
-            throw new SimulationException($"Set error: Object property not defined");
+            throw new SimulationException("Error: Object property not defined");
         }
+
         if (!arguments.TryGetValue("objectName", out string objectName))
         {
-            throw new SimulationException($"Set error: Object name not defined");
+            throw new SimulationException("Error: Object name not defined");
         }
 
         return (objectName, objectProperty);
+    }
+
+    public override SimulatorValueItem GetOutput(SimulatorRoutineRevisionOutput outputConfig,
+        Dictionary<string, string> arguments)
+    {
+        var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
+
+        SimulatorValue resValue =
+            GetProperty(_model, objectName, objectProperty, outputConfig, _propMap, _units, _logger);
+        var simulatorObjectReference = new Dictionary<string, string>()
+        {
+            { "objectName", objectName },
+            { "objectProperty", objectProperty }
+        };
+        var outputUnitName = outputConfig.Unit?.Name;
+        var outputUnit = outputUnitName != null && resValue.Type == SimulatorValueType.DOUBLE
+            ? new SimulatorValueUnit()
+            {
+                Name = outputUnitName,
+            }
+            : null;
+        return new SimulatorValueItem()
+        {
+            ReferenceId = outputConfig.ReferenceId,
+            SimulatorObjectReference = simulatorObjectReference,
+            TimeseriesExternalId = outputConfig.SaveTimeseriesExternalId,
+            ValueType = resValue.Type,
+            Value = resValue,
+            Unit = outputUnit
+        };
+    }
+
+    public override void SetInput(SimulatorRoutineRevisionInput inputConfig, SimulatorValueItem input,
+        Dictionary<string, string> arguments)
+    {
+        var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
+        var simulatorObjectReference = new Dictionary<string, string>()
+        {
+            { "objectName", objectName },
+            { "objectProperty", objectProperty }
+        };
+        input.SimulatorObjectReference = simulatorObjectReference;
+
+        SetProperty(_model, objectName, objectProperty, input, _propMap, _units, _logger);
+    }
+
+    public override void RunCommand(Dictionary<string, string> arguments)
+    {
+        if (!arguments.TryGetValue("command", out string? command))
+        {
+            throw new SimulationException("Command error: Command not defined");
+        }
+
+        _logger.LogDebug($"Run Command : {command} ");
+
+        switch (command)
+        {
+            case "Solve":
+            {
+                _logger.LogDebug("Running the solver");
+                _interface.CalculateFlowsheet2(_model);
+                if (!_model.Solved)
+                {
+                    throw new SimulationException($"Command error: {_model.ErrorMessage}");
+                }
+
+                break;
+            }
+            default:
+                throw new NotImplementedException($"Unsupported command: '{command}'");
+        }
+    }
+
+    private static SimulatorValue GetProperty(
+        dynamic model,
+        string objectName,
+        string objectProperty,
+        SimulatorRoutineRevisionOutput outputConfig,
+        Dictionary<string, string> propMap,
+        UnitConverter unitConverter,
+        ILogger<DwsimClient> logger)
+    {
+        var unitName = outputConfig.Unit?.Name;
+
+        // get a reference to the object by name
+        var objectRef = GetDwsimObjectFromObjectNameAndProperty(model, objectName, outputConfig.ReferenceId);
+
+        // Special logic for "Composition" property
+        if (objectProperty == "Composition")
+        {
+            if (outputConfig.ValueType != SimulatorValueType.DOUBLE_ARRAY)
+            {
+                throw new SimulationException(
+                    $"Unsupported value type {outputConfig.ValueType} for property 'Composition'. Expected DOUBLE_ARRAY. ReferenceId = '{outputConfig.ReferenceId}'");
+            }
+
+            // composition is a unitless property, so we should throw an error if a unit is specified
+            if (unitName != null)
+            {
+                throw new SimulationException(
+                    $"Unsupported unit '{unitName}' for property 'Composition'. ReferenceId = '{outputConfig.ReferenceId}'");
+            }
+
+            // only objects implementing the IMaterialStream interface have the 'GetOverallComposition' method
+            try
+            {
+                double[] composition = objectRef.GetOverallComposition();
+                return SimulatorValue.Create(composition);
+            }
+            catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
+            {
+                throw new SimulationException(
+                    $"Unrecognized property 'Composition' for object {objectName} {e}. ReferenceId = '{outputConfig.ReferenceId}'");
+            }
+        }
+
+        // Special logic for "Components" property
+        if (objectProperty == "Components")
+        {
+            if (outputConfig.ValueType != SimulatorValueType.STRING_ARRAY)
+            {
+                throw new SimulationException(
+                    $"Unsupported value type {outputConfig.ValueType} for property 'Components'. Expected STRING_ARRAY. ReferenceId = '{outputConfig.ReferenceId}'");
+            }
+
+            // only objects implementing the IMaterialStream interface have the 'ComponentIds' property
+            try
+            {
+                string[] components = objectRef.ComponentIds;
+                return SimulatorValue.Create(components);
+            }
+            catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
+            {
+                throw new SimulationException(
+                    $"Unrecognized property 'Components' for object {objectName} {e}. ReferenceId = '{outputConfig.ReferenceId}'");
+            }
+        }
+
+        // Properties that we can read from the selected object
+        string[] objectRefProperties = objectRef.GetProperties(3);
+        var propKey = GetPropertyKey(objectName, objectProperty, objectRefProperties, propMap,
+            outputConfig.ReferenceId);
+
+        var value = objectRef.GetPropertyValue(propKey);
+        switch (value)
+        {
+            // detected as DOUBLE
+            case double:
+            {
+                logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'DOUBLE'");
+                if (outputConfig.ValueType != SimulatorValueType.DOUBLE)
+                {
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + outputConfig.ValueType +
+                        "' but received 'DOUBLE'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
+                }
+
+                var numericValue = unitName is null
+                    ? value
+                    : unitConverter.ConvertFromSI(unitName, value);
+                return new SimulatorValue.Double(numericValue);
+            }
+            // detected as STRING
+            case string:
+            {
+                logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'STRING'");
+                if (outputConfig.ValueType != SimulatorValueType.STRING)
+                {
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + outputConfig.ValueType +
+                        "' but received 'STRING'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
+                }
+
+                return new SimulatorValue.String(value);
+            }
+            // Besides for 'Composition' and 'Components', we only support DOUBLE and STRING types for now
+            default:
+                throw new NotImplementedException(
+                    $"Cannot read value type '{value.GetType()}' from the property '{objectProperty}' of object '{objectName}'. Given value type is not supported. ReferenceId = '{outputConfig.ReferenceId}'");
+        }
+    }
+
+    private static void SetProperty(
+        dynamic model,
+        string objectName,
+        string objectProperty,
+        SimulatorValueItem inputItem,
+        Dictionary<string, string> propMap,
+        UnitConverter unitConverter,
+        ILogger<DwsimClient> logger)
+    {
+        var unitName = inputItem.Unit?.Name;
+        var wrappedValue = inputItem.Value;
+
+        // get a reference to the object by name
+        var objectRef = GetDwsimObjectFromObjectNameAndProperty(model, objectName, inputItem.ReferenceId);
+
+        // Special logic for "Composition" property
+        if (objectProperty == "Composition")
+        {
+            if (inputItem.ValueType == SimulatorValueType.DOUBLE_ARRAY)
+            {
+                var doubleList = ((SimulatorValue.DoubleArray)wrappedValue).Value;
+
+                // composition is a unitless property, so we should throw an error if a unit is specified
+                if (unitName != null)
+                {
+                    throw new SimulationException(
+                        $"Unsupported unit '{unitName}' for property 'Composition'. ReferenceId = '{inputItem.ReferenceId}'");
+                }
+
+                // only objects implementing the IMaterialStream interface have the 'SetOverallMolarComposition' method
+                try
+                {
+                    objectRef.SetOverallMolarComposition(doubleList?.ToArray());
+                }
+                catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException e)
+                {
+                    throw new SimulationException(
+                        $"Failed to update 'Composition' for object '{objectName}' {e}. ReferenceId = '{inputItem.ReferenceId}'");
+                }
+            }
+            else
+            {
+                throw new SimulationException(
+                    $"Unsupported value type '{inputItem.ValueType}' for property 'Composition'. ReferenceId = '{inputItem.ReferenceId}'");
+            }
+
+            return;
+        }
+
+        // Properties that we can write to
+        string[] inObjProps = objectRef.GetProperties(1);
+        var propKey = GetPropertyKey(objectName, objectProperty, inObjProps, propMap, inputItem.ReferenceId);
+
+        bool success;
+        var currentValue = objectRef.GetPropertyValue(propKey);
+        switch (currentValue)
+        {
+            // detected as DOUBLE
+            case double:
+            {
+                logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'DOUBLE'");
+                if (inputItem.ValueType != SimulatorValueType.DOUBLE)
+                {
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + inputItem.ValueType +
+                        "' but the target is 'DOUBLE'. ReferenceId = '" + inputItem.ReferenceId + "'.",
+                        canRetry: false);
+                }
+
+                var rawValue = ((SimulatorValue.Double)wrappedValue).Value;
+                var value = unitName is null
+                    ? rawValue
+                    : unitConverter.ConvertToSI(unitName, rawValue);
+
+                success = objectRef.SetPropertyValue(propKey, value);
+                break;
+            }
+            // detected as STRING
+            case string:
+            {
+                logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'STRING'");
+                if (inputItem.ValueType != SimulatorValueType.STRING)
+                {
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + inputItem.ValueType +
+                        "' but the target is 'STRING'. ReferenceId = '" + inputItem.ReferenceId + "'.",
+                        canRetry: false);
+                }
+
+                var value = ((SimulatorValue.String)wrappedValue).Value;
+                success = objectRef.SetPropertyValue(propKey, value);
+                break;
+            }
+            // Besides for 'Composition', we only support writing to DOUBLE and STRING types for now
+            default:
+                throw new NotImplementedException(
+                    $"Cannot assign value type '{wrappedValue.Type}' to the property '{objectProperty}' of object '{objectName}'. Given value type is not supported. ReferenceId = '{inputItem.ReferenceId}'");
+        }
+
+        if (!success)
+        {
+            throw new SimulationException(
+                $"Cannot assign value to the property '{objectProperty}' for object '{objectName}'. ReferenceId = '{inputItem.ReferenceId}'");
+        }
+    }
+
+    private static dynamic GetDwsimObjectFromObjectNameAndProperty(dynamic model, string objectName, string referenceId)
+    {
+        // get the object by name
+        var obj = model.GetFlowsheetSimulationObject(objectName);
+        if (obj == null)
+        {
+            throw new SimulationException($"Flowsheet object not found: '{objectName}'. ReferenceId = '{referenceId}'");
+        }
+
+        return obj;
+    }
+
+    private static string GetPropertyKey(string objectName, string objectProperty, string[] objectRefProperties,
+        Dictionary<string, string> propMap, string referenceId)
+    {
+        // Some properties have different names in the UI and in the simulation model
+        if (objectRefProperties.Contains(objectProperty)) return objectProperty;
+
+        // translate from UI label to property ID.
+        var props = propMap.Where(
+            kvp => kvp.Value == objectProperty && objectRefProperties.Contains(kvp.Key));
+        if (!props.Any())
+        {
+            throw new SimulationException(
+                $"Unrecognized property '{objectProperty}' for object '{objectName}'. ReferenceId = '{referenceId}'");
+        }
+
+        return props.First().Key;
     }
 }

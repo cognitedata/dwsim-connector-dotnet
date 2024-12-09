@@ -18,12 +18,16 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-124":
+    description: Refactored the routine runner
+    changelog:
+      changed:
+        - "Refactored the routine runner, making it more similar to other connectors."
   "1.0.0-alpha-123":
     description: Updated documentation links
     changelog:
       added:
         - "Updated documentation links to the public simulator connectors documentation."
-
   "1.0.0-alpha-122":
     description: Scalability improvements
     changelog:
