@@ -18,6 +18,11 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-125":
+    description: Support for bigger model files
+    changelog:
+      added:
+        - "Bumped the theoretical limit for the supported size of the model files. (up until 8GB)"
   "1.0.0-alpha-124":
     description: Refactored the routine runner
     changelog:
