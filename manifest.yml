@@ -23,6 +23,7 @@ versions:
     changelog:
       added:
         - "Introduced `connector.simulation-run-tolerance` configuration option to prevent simulation runs pile-up. The connector will time out simulation runs that are older than this value (in seconds)."
+      changed:  
         - "**Breaking** Removed redundant `simulator` configuration section from the configuration file, moved the `data-set-id` configuration property under the `connector` section."
   "1.0.0-alpha-125":
     description: Support for bigger model files
