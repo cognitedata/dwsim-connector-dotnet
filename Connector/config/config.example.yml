@@ -18,10 +18,7 @@ cognite:
 connector:
   name-prefix: "dwsim-connector@"
   add-machine-name-suffix: true
-
-simulator:
-  name: "DWSIM"
-  data-set-id: ${CDF_CONNECTOR_DATASET}
+  data-set-id: ${COGNITE_DATA_SET_ID}
 
 automation:
   dwsim-installation-path: "C:/Users/user-name/AppData/Local/DWSIM"
