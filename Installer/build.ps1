@@ -38,4 +38,4 @@ if ("$($version)" -match '-alpha.' -or "$($version)" -match '-beta.')
 
 $Args = "$($Args) /p:is_pre_release=`"$($IsPreRelease)`" /p:target_version=`"$($ValidVersion)`" /p:target_actual_version=`"$($version)`" /p:target_description=`"$($description)`""
 
-Invoke-Expression "$msbuild $($Settings.setup_project) $Args"
+Invoke-Expression "dotnet wix build $($Settings.setup_project) $Args"
