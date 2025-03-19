@@ -11,7 +11,7 @@
            Version="$(var.ProductVersion)"
            Manufacturer="Cognite AS"
            UpgradeCode="$(var.upgrade_guid)" >
-    <Package InstallerVersion="200" 
+    <Package InstallerVersion="500" 
              Compressed="yes" 
              InstallScope="perMachine"
              Manufacturer="Cognite AS"
