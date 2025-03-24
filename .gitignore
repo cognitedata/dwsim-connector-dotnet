@@ -14,3 +14,4 @@ configurations/*
 Service/configurations/*
 Service/files/*
 .idea/*
+Installer/Product.msi
