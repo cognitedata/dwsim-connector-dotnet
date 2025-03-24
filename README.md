@@ -19,7 +19,7 @@ This connector uses COM (Component Object Model) to communicate with DWSIM. It e
 This repo comes with a setup creation template for the DWSIM connector. Here's how to use it:
 
 - Change directory to the `Installer` folder
-- Run `\build.ps1 -b msbuild -v ${{ VERSION_OF_DWSIM_CONNECTOR_HERE }} -d "DWSIM connector Installer" -c .\setup-config.json`
+- Run `\build.ps1 -v ${{ VERSION_OF_DWSIM_CONNECTOR_HERE }} -d "DWSIM connector Installer" -c .\setup-config.json`
 
 # About the code
 

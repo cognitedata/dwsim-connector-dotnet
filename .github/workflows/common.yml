@@ -79,9 +79,6 @@ jobs:
           
           - name: Restore tools
             run: dotnet tool restore
-          
-          - name: Add msbuild to path
-            uses: microsoft/setup-msbuild@v1.3
 
           - name: Build and Publish Service binary
             working-directory: .\Service
@@ -103,7 +100,7 @@ jobs:
 
           - name: Build Installer
             working-directory: .\Installer
-            run: .\build.ps1 -b msbuild -v ${{ needs.prerequisites.outputs.version }} -d "DWSIM connector Installer" -c .\setup-config.json
+            run: .\build.ps1 -v ${{ needs.prerequisites.outputs.version }} -d "DWSIM connector Installer" -c .\setup-config.json
             shell: powershell
 
           - name: Sign Installer
@@ -120,7 +117,7 @@ jobs:
               path-to-binary: '.\Installer\bin\Release\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi'
 
           - run: mkdir .\uploads
-          - run: mv .\Installer\bin\Release\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi .\uploads\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi
+        - run: mv .\Installer\bin\Release\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi .\uploads\DwsimConnectorInstaller-${{ needs.prerequisites.outputs.version }}.msi
           - run: mv .\Service\bin\portable\Service.exe .\uploads\Service.exe
           - name: upload artifact
             if: ${{ needs.prerequisites.outputs.branch == 'main' && needs.prerequisites.outputs.should-release == 0 }}
