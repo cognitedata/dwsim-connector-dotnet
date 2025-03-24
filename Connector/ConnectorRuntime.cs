@@ -21,9 +21,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Connector;
-public static class ConnectorRuntime {
+public static class ConnectorRuntime
+{
 
-    public static void Init() {
+    public static void Init()
+    {
         DefaultConnectorRuntime<DwsimAutomationConfig, DefaultModelFilestate, DefaultModelFileStatePoco>.ConfigureServices = ConfigureServices;
         DefaultConnectorRuntime<DwsimAutomationConfig, DefaultModelFilestate, DefaultModelFileStatePoco>.ConnectorName = "DWSIM";
         DefaultConnectorRuntime<DwsimAutomationConfig, DefaultModelFilestate, DefaultModelFileStatePoco>.SimulatorDefinition = SimulatorDefinition.Get();
@@ -32,13 +34,15 @@ public static class ConnectorRuntime {
     {
         services.AddScoped<ISimulatorClient<DefaultModelFilestate, SimulatorRoutineRevision>, DwsimClient>();
     }
-    
-    public static async Task RunStandalone() {
+
+    public static async Task RunStandalone()
+    {
         Init();
         await DefaultConnectorRuntime<DwsimAutomationConfig, DefaultModelFilestate, DefaultModelFileStatePoco>.RunStandalone().ConfigureAwait(false);
     }
 
-    public static async Task Run(ILogger defaultLogger, CancellationToken token) {
+    public static async Task Run(ILogger defaultLogger, CancellationToken token)
+    {
         Init();
         await DefaultConnectorRuntime<DwsimAutomationConfig, DefaultModelFilestate, DefaultModelFileStatePoco>.Run(defaultLogger, token).ConfigureAwait(false);
     }

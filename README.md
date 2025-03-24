@@ -14,6 +14,12 @@ This connector uses COM (Component Object Model) to communicate with DWSIM. It e
 - Modify the `config.yml` file with your own Cognite Data Fusion credentials
 - Run `dotnet run --project .\Service\Service.csproj --service -w . -r win-x64`
 
+# Code formatting
+
+This project uses the `dotnet format` tool to ensure consistent code formatting.
+
+Run `dotnet format --verbosity normal` to format the code.
+
 # Building an installer
 
 This repo comes with a setup creation template for the DWSIM connector. Here's how to use it:
