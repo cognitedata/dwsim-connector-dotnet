@@ -27,7 +27,7 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Format
-      run: dotnet format ./dwsim-connector-dotnet.sln --verify-no-changes --severity warn --verbosity normal
+      run: dotnet format ./dwsim-connector-dotnet.sln --verify-no-changes --severity error --verbosity normal
     - name: Build
       run: dotnet build --no-restore
     - name: Test
