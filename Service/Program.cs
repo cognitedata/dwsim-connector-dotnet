@@ -73,7 +73,13 @@ public class Program
                 services.AddSingleton(setup);
                 services.AddHostedService<Worker>();
             });
-        builder = builder.ConfigureLogging(loggerFactory => loggerFactory.AddEventLog())
+        builder.ConfigureLogging(loggerFactory =>
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    loggerFactory.AddEventLog();
+                }
+            })
             .UseWindowsService(options => options.ServiceName = "DwsimConnector");
         builder.Build().Run();
     }
