@@ -116,16 +116,16 @@ internal class DwsimRoutine : RoutineImplementationBase
         switch (command)
         {
             case "Solve":
+            {
+                _logger.LogDebug("Running the solver");
+                _interface.CalculateFlowsheet2(_model);
+                if (!_model.Solved)
                 {
-                    _logger.LogDebug("Running the solver");
-                    _interface.CalculateFlowsheet2(_model);
-                    if (!_model.Solved)
-                    {
-                        throw new SimulationException($"Command error: {_model.ErrorMessage}");
-                    }
-
-                    break;
+                    throw new SimulationException($"Command error: {_model.ErrorMessage}");
                 }
+
+                break;
+            }
             default:
                 throw new NotImplementedException($"Unsupported command: '{command}'");
         }
@@ -206,33 +206,33 @@ internal class DwsimRoutine : RoutineImplementationBase
         {
             // detected as DOUBLE
             case double:
+            {
+                logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'DOUBLE'");
+                if (outputConfig.ValueType != SimulatorValueType.DOUBLE)
                 {
-                    logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'DOUBLE'");
-                    if (outputConfig.ValueType != SimulatorValueType.DOUBLE)
-                    {
-                        throw new DwsimException(
-                            "Value type mismatch. Expected '" + outputConfig.ValueType +
-                            "' but received 'DOUBLE'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
-                    }
-
-                    var numericValue = unitName is null
-                        ? value
-                        : unitConverter.ConvertFromSI(unitName, value);
-                    return new SimulatorValue.Double(numericValue);
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + outputConfig.ValueType +
+                        "' but received 'DOUBLE'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
                 }
+
+                var numericValue = unitName is null
+                    ? value
+                    : unitConverter.ConvertFromSI(unitName, value);
+                return new SimulatorValue.Double(numericValue);
+            }
             // detected as STRING
             case string:
+            {
+                logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'STRING'");
+                if (outputConfig.ValueType != SimulatorValueType.STRING)
                 {
-                    logger.LogDebug($"ReferenceId = '{outputConfig.ReferenceId}' detected as 'STRING'");
-                    if (outputConfig.ValueType != SimulatorValueType.STRING)
-                    {
-                        throw new DwsimException(
-                            "Value type mismatch. Expected '" + outputConfig.ValueType +
-                            "' but received 'STRING'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
-                    }
-
-                    return new SimulatorValue.String(value);
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + outputConfig.ValueType +
+                        "' but received 'STRING'. ReferenceId = '" + outputConfig.ReferenceId + "'.", canRetry: false);
                 }
+
+                return new SimulatorValue.String(value);
+            }
             // Besides for 'Composition' and 'Components', we only support DOUBLE and STRING types for now
             default:
                 throw new NotImplementedException(
@@ -299,40 +299,40 @@ internal class DwsimRoutine : RoutineImplementationBase
         {
             // detected as DOUBLE
             case double:
+            {
+                logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'DOUBLE'");
+                if (inputItem.ValueType != SimulatorValueType.DOUBLE)
                 {
-                    logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'DOUBLE'");
-                    if (inputItem.ValueType != SimulatorValueType.DOUBLE)
-                    {
-                        throw new DwsimException(
-                            "Value type mismatch. Expected '" + inputItem.ValueType +
-                            "' but the target is 'DOUBLE'. ReferenceId = '" + inputItem.ReferenceId + "'.",
-                            canRetry: false);
-                    }
-
-                    var rawValue = ((SimulatorValue.Double)wrappedValue).Value;
-                    var value = unitName is null
-                        ? rawValue
-                        : unitConverter.ConvertToSI(unitName, rawValue);
-
-                    success = objectRef.SetPropertyValue(propKey, value);
-                    break;
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + inputItem.ValueType +
+                        "' but the target is 'DOUBLE'. ReferenceId = '" + inputItem.ReferenceId + "'.",
+                        canRetry: false);
                 }
+
+                var rawValue = ((SimulatorValue.Double)wrappedValue).Value;
+                var value = unitName is null
+                    ? rawValue
+                    : unitConverter.ConvertToSI(unitName, rawValue);
+
+                success = objectRef.SetPropertyValue(propKey, value);
+                break;
+            }
             // detected as STRING
             case string:
+            {
+                logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'STRING'");
+                if (inputItem.ValueType != SimulatorValueType.STRING)
                 {
-                    logger.LogDebug($"ReferenceId = '{inputItem.ReferenceId}' detected as 'STRING'");
-                    if (inputItem.ValueType != SimulatorValueType.STRING)
-                    {
-                        throw new DwsimException(
-                            "Value type mismatch. Expected '" + inputItem.ValueType +
-                            "' but the target is 'STRING'. ReferenceId = '" + inputItem.ReferenceId + "'.",
-                            canRetry: false);
-                    }
-
-                    var value = ((SimulatorValue.String)wrappedValue).Value;
-                    success = objectRef.SetPropertyValue(propKey, value);
-                    break;
+                    throw new DwsimException(
+                        "Value type mismatch. Expected '" + inputItem.ValueType +
+                        "' but the target is 'STRING'. ReferenceId = '" + inputItem.ReferenceId + "'.",
+                        canRetry: false);
                 }
+
+                var value = ((SimulatorValue.String)wrappedValue).Value;
+                success = objectRef.SetPropertyValue(propKey, value);
+                break;
+            }
             // Besides for 'Composition', we only support writing to DOUBLE and STRING types for now
             default:
                 throw new NotImplementedException(
