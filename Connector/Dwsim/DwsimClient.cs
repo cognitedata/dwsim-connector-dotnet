@@ -62,7 +62,7 @@ namespace Connector.Dwsim
             ResourceManager rm = new ResourceManager("DWSIM.FlowsheetBase.Properties", assembly);
             var resourceSet = rm.GetResourceSet(CultureInfo.InvariantCulture, true, false);
             if (resourceSet != null)
-            {    
+            {
                 foreach (DictionaryEntry entry in resourceSet)
                 {
                     var key = entry.Key?.ToString();
