@@ -88,5 +88,5 @@ public class Program
 public class ConnectorParams
 {
     public bool Service { get; set; }
-    public string WorkDir { get; set; }
+    public string? WorkDir { get; set; }
 }

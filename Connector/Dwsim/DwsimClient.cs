@@ -20,6 +20,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.InteropServices;
+using Cognite.Extensions;
 using Cognite.Simulator.Utils;
 using Cognite.Simulator.Utils.Automation;
 using CogniteSdk.Alpha;
@@ -36,7 +37,7 @@ namespace Connector.Dwsim
     {
         private readonly ILogger<DwsimClient> _logger;
         public string Version { get; init; }
-        private readonly Dictionary<string, string> _propMap;
+        private readonly Dictionary<string, string> _propMap = new Dictionary<string, string>();
         private readonly UnitConverter _unitConverter;
 
         // Lock to prevent concurrent access to simulator resources
@@ -47,16 +48,33 @@ namespace Connector.Dwsim
             : base(logger, config.Automation)
         {
             _logger = logger;
-            string dllPath = Path.Combine(config.Automation.DwsimInstallationPath, "DWSIM.Automation.dll");
+            var dwsimInstallationPath = config.Automation.DwsimInstallationPath;
+            if (dwsimInstallationPath == null)
+            {
+                throw new DwsimException("DWSIM installation path is not set");
+            }
+            string dllPath = Path.Combine(dwsimInstallationPath, "DWSIM.Automation.dll");
             FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(dllPath);
             Version = fvi.FileVersion != null ? fvi.FileVersion : "N/A";
 
-            string propsDll = Path.Combine(config.Automation.DwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
+            string propsDll = Path.Combine(dwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
             Assembly assembly = Assembly.LoadFrom(propsDll);
             ResourceManager rm = new ResourceManager("DWSIM.FlowsheetBase.Properties", assembly);
-            _propMap = rm.GetResourceSet(CultureInfo.InvariantCulture, true, false)
-                .Cast<DictionaryEntry>().ToDictionary(x => x.Key.ToString(), x => x.Value.ToString());
-            _unitConverter = new UnitConverter(config.Automation.DwsimInstallationPath);
+            var resourceSet = rm.GetResourceSet(CultureInfo.InvariantCulture, true, false);
+            if (resourceSet != null)
+            {    
+                foreach (DictionaryEntry entry in resourceSet)
+                {
+                    var key = entry.Key?.ToString();
+                    var value = entry.Value?.ToString();
+                    if (key != null && value != null)
+                    {
+                        _propMap[key] = value;
+                    }
+                }
+            }
+
+            _unitConverter = new UnitConverter(dwsimInstallationPath);
         }
 
         protected override void PreShutdown()
