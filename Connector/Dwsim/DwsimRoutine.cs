@@ -47,12 +47,12 @@ internal class DwsimRoutine : RoutineImplementationBase
 
     private (string Name, string Property) GetObjectNameAndProperty(Dictionary<string, string> arguments)
     {
-        if (!arguments.TryGetValue("objectProperty", out string objectProperty))
+        if (!arguments.TryGetValue("objectProperty", out string? objectProperty))
         {
             throw new SimulationException("Error: Object property not defined");
         }
 
-        if (!arguments.TryGetValue("objectName", out string objectName))
+        if (!arguments.TryGetValue("objectName", out string? objectName))
         {
             throw new SimulationException("Error: Object name not defined");
         }

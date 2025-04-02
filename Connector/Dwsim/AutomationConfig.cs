@@ -20,7 +20,7 @@ namespace Connector.Dwsim;
 
 public class DwsimAutomationConfig : AutomationConfig
 {
-    public string DwsimInstallationPath { get; set; }
+    public string? DwsimInstallationPath { get; set; }
 
     public DwsimAutomationConfig()
     {
