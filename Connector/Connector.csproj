@@ -9,6 +9,11 @@
     <!-- You may want to uncomment this to debug locally -->
     <!-- <PlatformTarget>x64</PlatformTarget>
     <Configuration>Debug</Configuration> -->
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>Default</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
