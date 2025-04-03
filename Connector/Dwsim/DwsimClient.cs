@@ -86,7 +86,7 @@ namespace Connector.Dwsim
             }
         }
 
-        public void TestConnection()
+        public Task TestConnection(CancellationToken _token)
         {
             _logger.LogInformation("Testing DWSIM connection...");
 
@@ -102,8 +102,8 @@ namespace Connector.Dwsim
                     throw new SimulatorConnectionException($"DWSIM is not available: {e.Message}", e);
                 }
             }
-            _logger.LogInformation(
-                "Connection to DWSIM established and removed successfully");
+            _logger.LogInformation("Connection to DWSIM established and removed successfully");
+            return Task.CompletedTask;
         }
 
         public bool CanOpenModel(string path)
@@ -133,7 +133,7 @@ namespace Connector.Dwsim
             return Server.LoadFlowsheet(path);
         }
 
-        public Task<Dictionary<string, SimulatorValueItem>> RunSimulation(DefaultModelFilestate modelState, SimulatorRoutineRevision routineRev, Dictionary<string, SimulatorValueItem> inputData)
+        public Task<Dictionary<string, SimulatorValueItem>> RunSimulation(DefaultModelFilestate modelState, SimulatorRoutineRevision routineRev, Dictionary<string, SimulatorValueItem> inputData, CancellationToken token)
         {
             _logger.LogDebug($"- Started running {routineRev.ExternalId} in DWSIM");
             lock (_simulatorLock)
@@ -148,7 +148,7 @@ namespace Connector.Dwsim
 
                     var routine = new DwsimRoutine(routineRev, model, Server, inputData, _propMap, _unitConverter, _logger);
 
-                    result = routine.PerformSimulation();
+                    result = routine.PerformSimulation(token);
                     return Task.FromResult(result);
                 }
                 finally
@@ -183,12 +183,12 @@ namespace Connector.Dwsim
             return Task.CompletedTask;
         }
 
-        public string GetSimulatorVersion()
+        public string GetSimulatorVersion(CancellationToken _token)
         {
             return Version;
         }
 
-        public string GetConnectorVersion()
+        public string GetConnectorVersion(CancellationToken _token)
         {
             return Cognite.Extractor.Metrics.Version.GetVersion(
                 Assembly.GetExecutingAssembly(),
