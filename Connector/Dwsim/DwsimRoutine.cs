@@ -61,7 +61,7 @@ internal class DwsimRoutine : RoutineImplementationBase
     }
 
     public override SimulatorValueItem GetOutput(SimulatorRoutineRevisionOutput outputConfig,
-        Dictionary<string, string> arguments)
+        Dictionary<string, string> arguments, CancellationToken _token)
     {
         var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
 
@@ -91,7 +91,7 @@ internal class DwsimRoutine : RoutineImplementationBase
     }
 
     public override void SetInput(SimulatorRoutineRevisionInput inputConfig, SimulatorValueItem input,
-        Dictionary<string, string> arguments)
+        Dictionary<string, string> arguments, CancellationToken _token)
     {
         var (objectName, objectProperty) = GetObjectNameAndProperty(arguments);
         var simulatorObjectReference = new Dictionary<string, string>()
@@ -104,7 +104,7 @@ internal class DwsimRoutine : RoutineImplementationBase
         SetProperty(_model, objectName, objectProperty, input, _propMap, _units, _logger);
     }
 
-    public override void RunCommand(Dictionary<string, string> arguments)
+    public override void RunCommand(Dictionary<string, string> arguments, CancellationToken _token)
     {
         if (!arguments.TryGetValue("command", out string? command))
         {
