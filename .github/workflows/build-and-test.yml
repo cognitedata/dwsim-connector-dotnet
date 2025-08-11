@@ -19,9 +19,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: 8
     - name: Restore dependencies
@@ -34,6 +34,6 @@ jobs:
       run: dotnet test --no-build --verbosity normal /p:Exclude="[*.Test]*" /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=TestResults/
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}

@@ -16,17 +16,17 @@ jobs:
     needs:
       - common
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 18
       
@@ -37,13 +37,13 @@ jobs:
         run: markdown-pdf Documentation.md
 
       - name: download-artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: windows artifacts
           path: ./
       
       - name: create release
-        uses: actions/create-release@v1
+        uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
         id: github-release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -55,7 +55,7 @@ jobs:
           prerelease: true
       
       - name: upload release msi
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         id: github-release-msi
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -66,7 +66,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: upload release binary
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         id: github-release-binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
