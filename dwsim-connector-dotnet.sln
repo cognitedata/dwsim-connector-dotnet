@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Service", "Service\Service.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Connector", "Connector\Connector.csproj", "{03FE7CB5-D98A-4FE4-A364-381CA2DB32BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Connector.Tests", "Connector.Tests\Connector.Tests.csproj", "{B6DB0860-09C7-48A0-B0F5-36F52737683A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{03FE7CB5-D98A-4FE4-A364-381CA2DB32BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{03FE7CB5-D98A-4FE4-A364-381CA2DB32BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{03FE7CB5-D98A-4FE4-A364-381CA2DB32BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6DB0860-09C7-48A0-B0F5-36F52737683A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6DB0860-09C7-48A0-B0F5-36F52737683A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6DB0860-09C7-48A0-B0F5-36F52737683A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6DB0860-09C7-48A0-B0F5-36F52737683A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

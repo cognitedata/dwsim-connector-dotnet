@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DWSIM_Simulation_Data>
+  <Compounds>
+    <Compound><Name>Water</Name><CAS_Number>7732-18-5</CAS_Number></Compound>
+    <Compound><Name>Ethanol</Name><CAS_Number>64-17-5</CAS_Number></Compound>
+    <Compound><Name>Benzene</Name><CAS_Number>71-43-2</CAS_Number></Compound>
+  </Compounds>
+  <PropertyPackages>
+    <PropertyPackage><ComponentName>PP-PengRobinson</ComponentName><PackageType>Peng-Robinson</PackageType></PropertyPackage>
+    <PropertyPackage><ComponentName>PP-NRTL</ComponentName><PackageType>NRTL</PackageType></PropertyPackage>
+  </PropertyPackages>
+</DWSIM_Simulation_Data>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DWSIM_Simulation_Data>
+  <SimulationObjects>
+    <SimulationObject><Type>DWSIM.UnitOperations.UnitOperations.Mixer</Type><Name>NODE-001</Name><ComponentName>NODE-001</ComponentName></SimulationObject>
+    <SimulationObject><Type>DWSIM.UnitOperations.UnitOperations.Splitter</Type><Name>NODE-002</Name><ComponentName>NODE-002</ComponentName></SimulationObject>
+  </SimulationObjects>
+  <GraphicObjects>
+    <GraphicObject>
+      <Name>NODE-001</Name><Tag>NODE-001</Tag><X>100</X><Y>100</Y><Width>30</Width><Height>30</Height>
+      <OutputConnectors>
+        <Connector IsAttached="true" AttachedToObjID="NODE-002" />
+        <Connector IsAttached="true" AttachedToObjID="NODE-002" />
+      </OutputConnectors>
+    </GraphicObject>
+    <GraphicObject>
+      <Name>NODE-002</Name><Tag>NODE-002</Tag><X>200</X><Y>100</Y><Width>30</Width><Height>30</Height>
+    </GraphicObject>
+  </GraphicObjects>
+</DWSIM_Simulation_Data>

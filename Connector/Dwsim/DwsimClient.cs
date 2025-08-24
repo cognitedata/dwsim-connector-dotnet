@@ -20,17 +20,14 @@ using System.Globalization;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.InteropServices;
-using Cognite.Extensions;
 using Cognite.Simulator.Utils;
 using Cognite.Simulator.Utils.Automation;
 using CogniteSdk.Alpha;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace Connector.Dwsim
 {
-    /// <summary>
-    /// Wrapper class that 
-    /// </summary>
     public class DwsimClient :
         AutomationClient,
         ISimulatorClient<DefaultModelFilestate, SimulatorRoutineRevision>
@@ -39,6 +36,7 @@ namespace Connector.Dwsim
         public string Version { get; init; }
         private readonly Dictionary<string, string> _propMap = new Dictionary<string, string>();
         private readonly UnitConverter _unitConverter;
+        private readonly string _dwsimInstallationPath;
 
         // Lock to prevent concurrent access to simulator resources
         private readonly object _simulatorLock = new object();
@@ -48,16 +46,12 @@ namespace Connector.Dwsim
             : base(logger, config.Automation)
         {
             _logger = logger;
-            var dwsimInstallationPath = config.Automation.DwsimInstallationPath;
-            if (dwsimInstallationPath == null)
-            {
-                throw new DwsimException("DWSIM installation path is not set");
-            }
-            string dllPath = Path.Combine(dwsimInstallationPath, "DWSIM.Automation.dll");
+            _dwsimInstallationPath = config.Automation.DwsimInstallationPath ?? throw new DwsimException("DWSIM installation path is not set");
+            string dllPath = Path.Combine(_dwsimInstallationPath, "DWSIM.Automation.dll");
             FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(dllPath);
             Version = fvi.FileVersion != null ? fvi.FileVersion : "N/A";
 
-            string propsDll = Path.Combine(dwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
+            string propsDll = Path.Combine(_dwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
             Assembly assembly = Assembly.LoadFrom(propsDll);
             ResourceManager rm = new ResourceManager("DWSIM.FlowsheetBase.Properties", assembly);
             var resourceSet = rm.GetResourceSet(CultureInfo.InvariantCulture, true, false);
@@ -74,7 +68,7 @@ namespace Connector.Dwsim
                 }
             }
 
-            _unitConverter = new UnitConverter(dwsimInstallationPath);
+            _unitConverter = new UnitConverter(_dwsimInstallationPath);
         }
 
         protected override void PreShutdown()
@@ -130,7 +124,8 @@ namespace Connector.Dwsim
 
         public dynamic OpenModel(string path)
         {
-            return Server.LoadFlowsheet(path);
+            string normalizedPath = Path.GetFullPath(path);
+            return Server.LoadFlowsheet(normalizedPath);
         }
 
         public Task<Dictionary<string, SimulatorValueItem>> RunSimulation(DefaultModelFilestate modelState, SimulatorRoutineRevision routineRev, Dictionary<string, SimulatorValueItem> inputData, CancellationToken token)
@@ -158,25 +153,92 @@ namespace Connector.Dwsim
             }
         }
 
-        public Task ExtractModelInformation(DefaultModelFilestate state, CancellationToken _token)
+        /// <summary>
+        /// Extracts model information as SimulatorModelRevisionDataFlowsheet
+        /// </summary>
+        /// <param name="modelFile">The model file to parse</param>
+        /// <param name="token">Cancellation token</param>
+        /// <returns>Parsed flowsheet or null if parsing fails</returns>
+        private SimulatorModelRevisionDataFlowsheet? ExtractFlowsheet(DefaultModelFilestate modelFile, CancellationToken token = default)
+        {
+            _logger.LogDebug("Opening model revision {ExternalId} for model parsing", modelFile.ExternalId);
+            lock (_simulatorLock)
+            {
+                try
+                {
+                    Initialize();
+                    dynamic model = OpenModel(modelFile.FilePath);
+
+                    var modelParser = new DwsimModelParser(_logger, _propMap, _dwsimInstallationPath);
+                    dynamic? flowsheet = modelParser.Parse(model, modelFile.FilePath, token);
+
+                    if (flowsheet == null)
+                    {
+                        _logger.LogWarning("Model parsing failed for {ExternalId}", modelFile.ExternalId);
+                    }
+
+                    // DEBUG: Save flowsheet as JSON for troubleshooting
+                    try
+                    {
+                        string modelDirectory = Path.GetDirectoryName(modelFile.FilePath) ?? "";
+                        string modelNameWithoutExt = Path.GetFileNameWithoutExtension(modelFile.FilePath);
+                        string jsonFilePath = Path.Combine(modelDirectory, $"{modelNameWithoutExt}_flowsheet_debug.json");
+
+                        var settings = new JsonSerializerSettings
+                        {
+                            ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
+                            Formatting = Formatting.Indented
+                        };
+                        string jsonContent = JsonConvert.SerializeObject(flowsheet, settings);
+                        File.WriteAllText(jsonFilePath, jsonContent);
+
+                        _logger.LogInformation("DEBUG: Saved flowsheet JSON to {FilePath}", jsonFilePath);
+                    }
+                    catch (Exception jsonEx)
+                    {
+                        _logger.LogWarning(jsonEx, "DEBUG: Failed to save flowsheet JSON for troubleshooting");
+                    }
+
+                    return flowsheet;
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Error while parsing DWSIM model {ExternalId}: {Error}", modelFile.ExternalId, e.Message);
+                    throw;
+                }
+                finally
+                {
+                    Shutdown();
+                }
+            }
+        }
+
+        public Task ExtractModelInformation(DefaultModelFilestate state, CancellationToken token)
         {
             try
             {
-                bool canRead = CanOpenModel(state.FilePath);
-                state.CanRead = canRead;
-                _logger.LogInformation("{Result} model revision {ExternalId} in DWSIM", canRead ? "Successfully opened" : "Failed to open", state.ExternalId);
-                if (canRead)
+                _logger.LogInformation("Opening model {ExternalId}", state.ExternalId);
+                SimulatorModelRevisionDataFlowsheet? flowsheet = ExtractFlowsheet(state, token);
+
+                if (flowsheet != null)
                 {
-                    state.ParsingInfo.SetSuccess();
+                    state.ParsingInfo.Flowsheet = flowsheet;
+                    state.ParsingInfo.RevisionDataInfo = [];
                 }
-                else
-                {
-                    state.ParsingInfo.SetFailure();
-                }
+
+                state.CanRead = true;
+                state.ParsingInfo.SetSuccess();
+                _logger.LogInformation("Successfully parsed model revision {ExternalId} in DWSIM", state.ExternalId);
+            }
+            catch (DwsimException de) when (!de.CanRetry)
+            {
+                _logger.LogError("DWSIM error while opening model {Name}: {Error}", state.ExternalId, de.Message);
+                state.ParsingInfo.SetFailure(de.Message);
+                state.CanRead = false; // This file cannot be parsed. Will not retry
             }
             catch (Exception e)
             {
-                _logger.LogError("Error while opening revision {ExternalId}: {Error}", state.ExternalId, e.Message);
+                _logger.LogWarning("Couldn't open the model {ExternalId}, will retry: {Error}", state.ExternalId, e.Message);
                 state.ParsingInfo.SetFailure();
                 state.CanRead = false;
             }

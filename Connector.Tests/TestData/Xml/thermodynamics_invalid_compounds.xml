@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DWSIM_Simulation_Data>
+  <Compounds>
+    <Compound><Name>Water</Name></Compound>
+    <Compound><CAS_Number>64-17-5</CAS_Number></Compound>
+    <Compound><Name></Name></Compound>
+    <Compound><Name>Ethanol</Name></Compound>
+  </Compounds>
+</DWSIM_Simulation_Data>
