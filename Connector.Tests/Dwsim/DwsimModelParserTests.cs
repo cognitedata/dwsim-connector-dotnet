@@ -15,7 +15,6 @@
  */
 
 using Connector.Dwsim;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -43,7 +42,7 @@ public class DwsimModelParserTests
         var parser = new TestableParser(_mockLogger.Object, _propMap, "test-path");
 
         // Assert
-        parser.Should().NotBeNull();
+        Assert.NotNull(parser);
     }
 
     [Fact]
@@ -51,20 +50,21 @@ public class DwsimModelParserTests
     {
         // Arrange
         string dwxmzPath = Path.Combine(_testDataPath, "basic_test.dwxmz");
-        File.Exists(dwxmzPath).Should().BeTrue("Test DWXMZ file should exist");
+        Assert.True(File.Exists(dwxmzPath), "Test DWXMZ file should exist");
 
         // Act
         string xmlPath = _parser.ExtractXmlFromDwxmz(dwxmzPath);
 
         // Assert
-        xmlPath.Should().NotBeNullOrEmpty();
-        File.Exists(xmlPath).Should().BeTrue();
-        xmlPath.Should().EndWith(".xml");
+        Assert.NotNull(xmlPath);
+        Assert.NotEmpty(xmlPath);
+        Assert.True(File.Exists(xmlPath));
+        Assert.EndsWith(".xml", xmlPath);
 
         // Verify XML content
         string xmlContent = File.ReadAllText(xmlPath);
-        xmlContent.Should().Contain("DWSIM_Simulation_Data");
-        xmlContent.Should().Contain("MaterialStream1");
+        Assert.Contains("DWSIM_Simulation_Data", xmlContent);
+        Assert.Contains("MaterialStream1", xmlContent);
 
         // Cleanup
         _parser.CleanupTempFiles(xmlPath);
@@ -89,13 +89,13 @@ public class DwsimModelParserTests
         string tempDir = Path.GetDirectoryName(xmlPath)!;
 
         // Verify temp directory exists
-        Directory.Exists(tempDir).Should().BeTrue();
+        Assert.True(Directory.Exists(tempDir));
 
         // Act
         _parser.CleanupTempFiles(xmlPath);
 
         // Assert
-        Directory.Exists(tempDir).Should().BeFalse();
+        Assert.False(Directory.Exists(tempDir));
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public class DwsimModelParserTests
         bool result = _parser.ValidateFilePath(existingFile);
 
         // Assert
-        result.Should().BeTrue();
+        Assert.True(result);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class DwsimModelParserTests
         bool result = _parser.ValidateFilePath(nonExistentFile);
 
         // Assert
-        result.Should().BeFalse();
+        Assert.False(result);
     }
 
     [Theory]
@@ -133,7 +133,7 @@ public class DwsimModelParserTests
         bool result = _parser.ValidateFilePath(invalidPath);
 
         // Assert
-        result.Should().BeFalse();
+        Assert.False(result);
     }
 
     private class TestableParser(
