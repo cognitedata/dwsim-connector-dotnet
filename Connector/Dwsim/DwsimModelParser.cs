@@ -16,6 +16,8 @@
 
 using System.IO.Compression;
 using System.Reflection;
+using System.Xml.Linq;
+using CogniteSdk.Alpha;
 using Microsoft.Extensions.Logging;
 
 namespace Connector.Dwsim;
@@ -139,6 +141,130 @@ public class DwsimModelParser
         _logger.LogError("Cannot access file path: {FilePath}", filePath);
         return false;
     }
+
+    /// <summary>
+    /// Parses nodes from XML file
+    /// </summary>
+    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <returns>List of parsed nodes</returns>
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath)
+    {
+        var nodes = new List<SimulatorModelRevisionDataObjectNode>();
+
+        try
+        {
+            XDocument doc = XDocument.Load(xmlFilePath);
+
+            // Parse SimulationObjects
+            List<XElement> simObjects = doc.Descendants("SimulationObject").ToList();
+
+            // Parse GraphicObjects
+            List<XElement> graphicObjects = doc.Descendants("GraphicObjects").FirstOrDefault()?.Elements("GraphicObject").ToList() ?? [];
+
+            // Create a lookup for graphic objects by Name
+            Dictionary<string, XElement> graphicObjectLookup = graphicObjects
+                .Where(g => g.Element("Name")?.Value != null)
+                .ToDictionary(g => g.Element("Name")!.Value, g => g);
+
+            foreach (XElement simObj in simObjects)
+            {
+                try
+                {
+                    string objName = simObj.Element("ComponentName")?.Value ??
+                                   simObj.Element("Name")?.Value ??
+                                   $"Object_{nodes.Count}";
+
+                    // Find corresponding graphic object
+                    graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
+
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj);
+                    if (node != null)
+                        nodes.Add(node);
+                }
+                catch
+                {
+                    // Skip problematic nodes
+                }
+            }
+        }
+        catch
+        {
+            // Return empty list on error
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Creates a node from XML elements
+    /// </summary>
+    /// <param name="simObj">Simulation object XML element</param>
+    /// <param name="graphicObj">Graphic object XML element</param>
+    /// <returns>Created node or null if creation fails</returns>
+    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(XElement simObj, XElement? graphicObj)
+    {
+        try
+        {
+            // Get basic object information from XML
+            string? objectId = simObj.Element("ComponentName")?.Value ?? simObj.Element("Name")?.Value;
+            string? objectType = simObj.Element("Type")?.Value?.Split('.').LastOrDefault();
+            string? objectName = graphicObj?.Element("Tag")?.Value ?? objectId;
+
+            // Skip nodes without required properties
+            if (string.IsNullOrEmpty(objectId) || string.IsNullOrEmpty(objectType))
+                return null;
+
+            // Create node with basic information
+            var node = new SimulatorModelRevisionDataObjectNode
+            {
+                Id = objectId,
+                Name = objectName,
+                Type = objectType,
+                Properties = new List<SimulatorModelRevisionDataProperty>()
+            };
+
+            // Set graphic properties from XML if available
+            if (graphicObj == null)
+                return node;
+
+            // Only create position if both X and Y are present
+            SimulatorModelRevisionDataPosition? position = null;
+            string? xElement = graphicObj.Element("X")?.Value;
+            string? yElement = graphicObj.Element("Y")?.Value;
+            if (xElement != null && yElement != null)
+            {
+                position = new SimulatorModelRevisionDataPosition
+                {
+                    X = double.Parse(xElement),
+                    Y = double.Parse(yElement)
+                };
+            }
+
+            string? widthElement = graphicObj.Element("Width")?.Value;
+            string? heightElement = graphicObj.Element("Height")?.Value;
+            string? rotationElement = graphicObj.Element("Rotation")?.Value;
+            string? flippedHElement = graphicObj.Element("FlippedH")?.Value;
+            string? flippedVElement = graphicObj.Element("FlippedV")?.Value;
+            string? activeElement = graphicObj.Element("Active")?.Value;
+
+            node.GraphicalObject = new SimulatorModelRevisionDataGraphicalObject
+            {
+                Position = position,
+                Width = widthElement != null ? double.Parse(widthElement) : null,
+                Height = heightElement != null ? double.Parse(heightElement) : null,
+                Angle = rotationElement != null ? double.Parse(rotationElement) : null,
+                ScaleX = flippedHElement != null ? bool.Parse(flippedHElement) : null,
+                ScaleY = flippedVElement != null ? bool.Parse(flippedVElement) : null,
+                Active = activeElement != null ? bool.Parse(activeElement) : null
+            };
+
+            return node;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>
@@ -146,6 +272,6 @@ public class DwsimModelParser
 /// </summary>
 public class DwsimModelParsingConfig
 {
-    // will be used later when we start to extract nodes
+    // will be used later when we start to extract node properties
     public int MaxPropertiesPerNode { get; set; } = 100;
 }
