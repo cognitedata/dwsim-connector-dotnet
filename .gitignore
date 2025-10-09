@@ -14,3 +14,4 @@ configurations/*
 Service/configurations/*
 Service/files/*
 .idea/*
+/Connector.Tests/TestResults
