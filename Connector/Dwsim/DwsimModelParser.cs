@@ -157,16 +157,17 @@ public class DwsimModelParser
         {
             XDocument doc = XDocument.Load(xmlFilePath);
 
-            // Parse SimulationObjects - scope to SimulationObjects parent element
-            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Descendants("SimulationObject").ToList() ?? [];
+            // Parse SimulationObjects - only direct children of SimulationObjects element
+            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
 
             // Parse GraphicObjects - scope to GraphicObjects parent element
             List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
 
-            // Create a lookup for graphic objects by Name
+            // Create a lookup for graphic objects by Name, handling duplicates by taking first occurrence
             Dictionary<string, XElement> graphicObjectLookup = graphicObjects
                 .Where(g => g.Element("Name")?.Value != null)
-                .ToDictionary(g => g.Element("Name")!.Value, g => g);
+                .GroupBy(g => g.Element("Name")!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
 
             foreach (XElement simObj in simObjects)
             {
