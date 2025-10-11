@@ -273,14 +273,10 @@ public class DwsimModelParserXmlTests : IDisposable
 
             // Check if any nodes have graphical properties
             var nodesWithGraphics = nodes.Where(n => n.GraphicalObject != null).ToList();
+            Assert.NotEmpty(nodesWithGraphics);
 
             foreach (var node in nodesWithGraphics)
             {
-                if (node.GraphicalObject.Position != null)
-                {
-                    Assert.True(true);
-                }
-
                 if (node.GraphicalObject.Width.HasValue)
                     Assert.True(node.GraphicalObject.Width >= 0);
 

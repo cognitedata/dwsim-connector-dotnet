@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
 using System.Xml.Linq;
@@ -238,7 +239,8 @@ public class DwsimModelParser
             SimulatorModelRevisionDataPosition? position = null;
             string? xElement = graphicObj.Element("X")?.Value;
             string? yElement = graphicObj.Element("Y")?.Value;
-            if (double.TryParse(xElement, out double x) && double.TryParse(yElement, out double y))
+            if (double.TryParse(xElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double x) &&
+                double.TryParse(yElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double y))
             {
                 position = new SimulatorModelRevisionDataPosition
                 {
@@ -257,9 +259,9 @@ public class DwsimModelParser
             node.GraphicalObject = new SimulatorModelRevisionDataGraphicalObject
             {
                 Position = position,
-                Width = double.TryParse(widthElement, out double w) ? w : null,
-                Height = double.TryParse(heightElement, out double h) ? h : null,
-                Angle = double.TryParse(rotationElement, out double angle) ? angle : null,
+                Width = double.TryParse(widthElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) ? w : null,
+                Height = double.TryParse(heightElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) ? h : null,
+                Angle = double.TryParse(rotationElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double angle) ? angle : null,
                 ScaleX = bool.TryParse(flippedHElement, out bool sx) ? sx : null,
                 ScaleY = bool.TryParse(flippedVElement, out bool sy) ? sy : null,
                 Active = bool.TryParse(activeElement, out bool active) ? active : null
