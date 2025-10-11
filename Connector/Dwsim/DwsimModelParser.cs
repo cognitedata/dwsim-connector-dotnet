@@ -146,8 +146,9 @@ public class DwsimModelParser
     /// Parses nodes from XML file
     /// </summary>
     /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>List of parsed nodes</returns>
-    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath)
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath, ILogger? logger = null)
     {
         var nodes = new List<SimulatorModelRevisionDataObjectNode>();
 
@@ -170,26 +171,31 @@ public class DwsimModelParser
             {
                 try
                 {
-                    string objName = simObj.Element("ComponentName")?.Value ??
-                                   simObj.Element("Name")?.Value ??
-                                   $"Object_{nodes.Count}";
+                    string? objName = simObj.Element("ComponentName")?.Value ??
+                                     simObj.Element("Name")?.Value;
+
+                    if (string.IsNullOrEmpty(objName))
+                    {
+                        logger?.LogDebug("Skipping simulation object without ComponentName or Name");
+                        continue;
+                    }
 
                     // Find corresponding graphic object
                     graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
 
-                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj);
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, logger);
                     if (node != null)
                         nodes.Add(node);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip problematic nodes
+                    logger?.LogWarning(ex, "Failed to parse simulation object, skipping node");
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Return empty list on error
+            logger?.LogError(ex, "Failed to load or parse XML file: {XmlFilePath}", xmlFilePath);
         }
 
         return nodes;
@@ -200,8 +206,9 @@ public class DwsimModelParser
     /// </summary>
     /// <param name="simObj">Simulation object XML element</param>
     /// <param name="graphicObj">Graphic object XML element</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>Created node or null if creation fails</returns>
-    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(XElement simObj, XElement? graphicObj)
+    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(XElement simObj, XElement? graphicObj, ILogger? logger = null)
     {
         try
         {
@@ -227,16 +234,16 @@ public class DwsimModelParser
             if (graphicObj == null)
                 return node;
 
-            // Only create position if both X and Y are present
+            // Only create position if both X and Y are present and can be parsed
             SimulatorModelRevisionDataPosition? position = null;
             string? xElement = graphicObj.Element("X")?.Value;
             string? yElement = graphicObj.Element("Y")?.Value;
-            if (xElement != null && yElement != null)
+            if (double.TryParse(xElement, out double x) && double.TryParse(yElement, out double y))
             {
                 position = new SimulatorModelRevisionDataPosition
                 {
-                    X = double.Parse(xElement),
-                    Y = double.Parse(yElement)
+                    X = x,
+                    Y = y
                 };
             }
 
@@ -250,18 +257,19 @@ public class DwsimModelParser
             node.GraphicalObject = new SimulatorModelRevisionDataGraphicalObject
             {
                 Position = position,
-                Width = widthElement != null ? double.Parse(widthElement) : null,
-                Height = heightElement != null ? double.Parse(heightElement) : null,
-                Angle = rotationElement != null ? double.Parse(rotationElement) : null,
-                ScaleX = flippedHElement != null ? bool.Parse(flippedHElement) : null,
-                ScaleY = flippedVElement != null ? bool.Parse(flippedVElement) : null,
-                Active = activeElement != null ? bool.Parse(activeElement) : null
+                Width = double.TryParse(widthElement, out double w) ? w : null,
+                Height = double.TryParse(heightElement, out double h) ? h : null,
+                Angle = double.TryParse(rotationElement, out double angle) ? angle : null,
+                ScaleX = bool.TryParse(flippedHElement, out bool sx) ? sx : null,
+                ScaleY = bool.TryParse(flippedVElement, out bool sy) ? sy : null,
+                Active = bool.TryParse(activeElement, out bool active) ? active : null
             };
 
             return node;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Unexpected error creating node from XML");
             return null;
         }
     }

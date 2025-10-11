@@ -295,6 +295,40 @@ public class DwsimModelParserXmlTests : IDisposable
         }
     }
 
+    [Fact]
+    public void CreateNodeFromXml_WithMalformedNumericData_ShouldHandleGracefully()
+    {
+        // Arrange - graphic object with mix of valid and invalid values
+        var simObj = System.Xml.Linq.XElement.Parse(@"
+            <SimulationObject>
+                <ComponentName>TestObject</ComponentName>
+                <Type>DWSIM.UnitOperations.Pump</Type>
+            </SimulationObject>");
+        var graphicObj = System.Xml.Linq.XElement.Parse(@"
+            <GraphicObject>
+                <Name>TestObject</Name>
+                <X>not_a_number</X>
+                <Y>200</Y>
+                <Width>invalid</Width>
+                <Height>50</Height>
+                <Rotation>bad_value</Rotation>
+                <FlippedH>not_bool</FlippedH>
+                <Active>true</Active>
+            </GraphicObject>");
+
+        // Act
+        var node = DwsimModelParser.CreateNodeFromXml(simObj, graphicObj);
+
+        // Assert - invalid values become null, valid values are parsed
+        Assert.NotNull(node);
+        Assert.Null(node.GraphicalObject.Position); // X was invalid
+        Assert.Null(node.GraphicalObject.Width);
+        Assert.Equal(50, node.GraphicalObject.Height);
+        Assert.Null(node.GraphicalObject.Angle);
+        Assert.Null(node.GraphicalObject.ScaleX);
+        Assert.True(node.GraphicalObject.Active);
+    }
+
     private class TestableParser(
         ILogger<DwsimClient> logger,
         Dictionary<string, string> propMap,
