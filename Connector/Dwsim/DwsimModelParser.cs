@@ -157,11 +157,11 @@ public class DwsimModelParser
         {
             XDocument doc = XDocument.Load(xmlFilePath);
 
-            // Parse SimulationObjects
-            List<XElement> simObjects = doc.Descendants("SimulationObject").ToList();
+            // Parse SimulationObjects - scope to SimulationObjects parent element
+            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Descendants("SimulationObject").ToList() ?? [];
 
-            // Parse GraphicObjects
-            List<XElement> graphicObjects = doc.Descendants("GraphicObjects").FirstOrDefault()?.Elements("GraphicObject").ToList() ?? [];
+            // Parse GraphicObjects - scope to GraphicObjects parent element
+            List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
 
             // Create a lookup for graphic objects by Name
             Dictionary<string, XElement> graphicObjectLookup = graphicObjects
