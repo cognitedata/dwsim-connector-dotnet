@@ -150,8 +150,6 @@ public class DwsimModelParserXmlTests : IDisposable
         Assert.Equal(50, node.GraphicalObject.Width);
         Assert.Equal(30, node.GraphicalObject.Height);
         Assert.Equal(45, node.GraphicalObject.Angle);
-        Assert.True(node.GraphicalObject.ScaleX);
-        Assert.False(node.GraphicalObject.ScaleY);
         Assert.True(node.GraphicalObject.Active);
     }
 
@@ -252,8 +250,6 @@ public class DwsimModelParserXmlTests : IDisposable
         // These should be null since they weren't in the XML
         Assert.Null(node.GraphicalObject.Height);
         Assert.Null(node.GraphicalObject.Angle);
-        Assert.Null(node.GraphicalObject.ScaleX);
-        Assert.Null(node.GraphicalObject.ScaleY);
         Assert.Null(node.GraphicalObject.Active);
     }
 
@@ -321,7 +317,6 @@ public class DwsimModelParserXmlTests : IDisposable
         Assert.Null(node.GraphicalObject.Width);
         Assert.Equal(50, node.GraphicalObject.Height);
         Assert.Null(node.GraphicalObject.Angle);
-        Assert.Null(node.GraphicalObject.ScaleX);
         Assert.True(node.GraphicalObject.Active);
     }
 

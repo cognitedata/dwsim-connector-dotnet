@@ -229,43 +229,8 @@ public class DwsimModelParser
                 Id = objectId,
                 Name = objectName,
                 Type = objectType,
-                Properties = new List<SimulatorModelRevisionDataProperty>()
-            };
-
-            // Set graphic properties from XML if available
-            if (graphicObj == null)
-                return node;
-
-            // Only create position if both X and Y are present and can be parsed
-            SimulatorModelRevisionDataPosition? position = null;
-            string? xElement = graphicObj.Element("X")?.Value;
-            string? yElement = graphicObj.Element("Y")?.Value;
-            if (double.TryParse(xElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double x) &&
-                double.TryParse(yElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double y))
-            {
-                position = new SimulatorModelRevisionDataPosition
-                {
-                    X = x,
-                    Y = y
-                };
-            }
-
-            string? widthElement = graphicObj.Element("Width")?.Value;
-            string? heightElement = graphicObj.Element("Height")?.Value;
-            string? rotationElement = graphicObj.Element("Rotation")?.Value;
-            string? flippedHElement = graphicObj.Element("FlippedH")?.Value;
-            string? flippedVElement = graphicObj.Element("FlippedV")?.Value;
-            string? activeElement = graphicObj.Element("Active")?.Value;
-
-            node.GraphicalObject = new SimulatorModelRevisionDataGraphicalObject
-            {
-                Position = position,
-                Width = double.TryParse(widthElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) ? w : null,
-                Height = double.TryParse(heightElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) ? h : null,
-                Angle = double.TryParse(rotationElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double angle) ? angle : null,
-                ScaleX = bool.TryParse(flippedHElement, out bool sx) ? sx : null,
-                ScaleY = bool.TryParse(flippedVElement, out bool sy) ? sy : null,
-                Active = bool.TryParse(activeElement, out bool active) ? active : null
+                Properties = new List<SimulatorModelRevisionDataProperty>(),
+                GraphicalObject = CreateGraphicalObjectFromXml(graphicObj)
             };
 
             return node;
@@ -275,6 +240,48 @@ public class DwsimModelParser
             logger?.LogWarning(ex, "Unexpected error creating node from XML");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Creates a graphical object from XML element
+    /// </summary>
+    /// <param name="graphicObj">Graphic object XML element</param>
+    /// <returns>Created graphical object or null if graphicObj is null</returns>
+    public static SimulatorModelRevisionDataGraphicalObject? CreateGraphicalObjectFromXml(XElement? graphicObj)
+    {
+        if (graphicObj == null)
+            return null;
+
+        // Only create position if both X and Y are present and can be parsed
+        SimulatorModelRevisionDataPosition? position = null;
+        string? xElement = graphicObj.Element("X")?.Value;
+        string? yElement = graphicObj.Element("Y")?.Value;
+        if (double.TryParse(xElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double x) &&
+            double.TryParse(yElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double y))
+        {
+            position = new SimulatorModelRevisionDataPosition
+            {
+                X = x,
+                Y = y
+            };
+        }
+
+        string? widthElement = graphicObj.Element("Width")?.Value;
+        string? heightElement = graphicObj.Element("Height")?.Value;
+        string? rotationElement = graphicObj.Element("Rotation")?.Value;
+        string? activeElement = graphicObj.Element("Active")?.Value;
+
+        return new SimulatorModelRevisionDataGraphicalObject
+        {
+            Position = position,
+            Width = double.TryParse(widthElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) ? w : null,
+            Height = double.TryParse(heightElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) ? h : null,
+            Angle = double.TryParse(rotationElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double angle) ? angle : null,
+            // TODO: Add ScaleX/ScaleY once SDK is updated to use double type instead of bool
+            // ScaleX should be -1.0 when FlippedH is true, 1.0 when false
+            // ScaleY should be -1.0 when FlippedV is true, 1.0 when false
+            Active = bool.TryParse(activeElement, out bool active) ? active : null
+        };
     }
 }
 
