@@ -49,7 +49,7 @@ public class DwsimModelParserTests
     public void ExtractXmlFromDwxmz_WithValidDwxmzFile_ShouldReturnXmlPath()
     {
         // Arrange
-        string dwxmzPath = Path.Combine(_testDataPath, "minimal_simulation.dwxmz");
+        string dwxmzPath = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
         Assert.True(File.Exists(dwxmzPath), "Test DWXMZ file should exist");
 
         // Act
@@ -84,7 +84,7 @@ public class DwsimModelParserTests
     public void CleanupTempFiles_WithValidTempPath_ShouldRemoveDirectory()
     {
         // Arrange
-        string dwxmzPath = Path.Combine(_testDataPath, "minimal_simulation.dwxmz");
+        string dwxmzPath = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
         string xmlPath = _parser.ExtractXmlFromDwxmz(dwxmzPath);
         string tempDir = Path.GetDirectoryName(xmlPath)!;
 
@@ -102,7 +102,7 @@ public class DwsimModelParserTests
     public void ValidateFilePath_WithExistingFile_ShouldReturnTrue()
     {
         // Arrange
-        string existingFile = Path.Combine(_testDataPath, "minimal_simulation.dwxmz");
+        string existingFile = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
 
         // Act
         bool result = _parser.ValidateFilePath(existingFile);
