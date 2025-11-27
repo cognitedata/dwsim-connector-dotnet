@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
+using System.Xml.Linq;
+using CogniteSdk.Alpha;
 using Microsoft.Extensions.Logging;
 
 namespace Connector.Dwsim;
@@ -139,6 +142,147 @@ public class DwsimModelParser
         _logger.LogError("Cannot access file path: {FilePath}", filePath);
         return false;
     }
+
+    /// <summary>
+    /// Parses nodes from XML file
+    /// </summary>
+    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <returns>List of parsed nodes</returns>
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath, ILogger? logger = null)
+    {
+        var nodes = new List<SimulatorModelRevisionDataObjectNode>();
+
+        try
+        {
+            XDocument doc = XDocument.Load(xmlFilePath);
+
+            // Parse SimulationObjects - only direct children of SimulationObjects element
+            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
+
+            // Parse GraphicObjects - scope to GraphicObjects parent element
+            List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
+
+            // Create a lookup for graphic objects by Name, handling duplicates by taking first occurrence
+            Dictionary<string, XElement> graphicObjectLookup = graphicObjects
+                .Where(g => g.Element("Name")?.Value != null)
+                .GroupBy(g => g.Element("Name")!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (XElement simObj in simObjects)
+            {
+                try
+                {
+                    string? objName = simObj.Element("ComponentName")?.Value ??
+                                     simObj.Element("Name")?.Value;
+
+                    if (string.IsNullOrEmpty(objName))
+                    {
+                        logger?.LogDebug("Skipping simulation object without ComponentName or Name");
+                        continue;
+                    }
+
+                    // Find corresponding graphic object
+                    graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
+
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, logger);
+                    if (node != null)
+                        nodes.Add(node);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to parse simulation object, skipping node");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Failed to load or parse XML file: {XmlFilePath}", xmlFilePath);
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Creates a node from XML elements
+    /// </summary>
+    /// <param name="simObj">Simulation object XML element</param>
+    /// <param name="graphicObj">Graphic object XML element</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <returns>Created node or null if creation fails</returns>
+    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(XElement simObj, XElement? graphicObj, ILogger? logger = null)
+    {
+        try
+        {
+            // Get basic object information from XML
+            string? objectId = simObj.Element("ComponentName")?.Value ?? simObj.Element("Name")?.Value;
+            string? objectType = simObj.Element("Type")?.Value?.Split('.').LastOrDefault();
+            string? objectName = graphicObj?.Element("Tag")?.Value ?? objectId;
+
+            // Skip nodes without required properties
+            if (string.IsNullOrEmpty(objectId) || string.IsNullOrEmpty(objectType))
+                return null;
+
+            // Create node with basic information
+            var node = new SimulatorModelRevisionDataObjectNode
+            {
+                Id = objectId,
+                Name = objectName,
+                Type = objectType,
+                Properties = new List<SimulatorModelRevisionDataProperty>(),
+                GraphicalObject = CreateGraphicalObjectFromXml(graphicObj)
+            };
+
+            return node;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Unexpected error creating node from XML");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Creates a graphical object from XML element
+    /// </summary>
+    /// <param name="graphicObj">Graphic object XML element</param>
+    /// <returns>Created graphical object or null if graphicObj is null</returns>
+    public static SimulatorModelRevisionDataGraphicalObject? CreateGraphicalObjectFromXml(XElement? graphicObj)
+    {
+        if (graphicObj == null)
+            return null;
+
+        // Only create position if both X and Y are present and can be parsed
+        SimulatorModelRevisionDataPosition? position = null;
+        string? xElement = graphicObj.Element("X")?.Value;
+        string? yElement = graphicObj.Element("Y")?.Value;
+        if (double.TryParse(xElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double x) &&
+            double.TryParse(yElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double y))
+        {
+            position = new SimulatorModelRevisionDataPosition
+            {
+                X = x,
+                Y = y
+            };
+        }
+
+        string? widthElement = graphicObj.Element("Width")?.Value;
+        string? heightElement = graphicObj.Element("Height")?.Value;
+        string? rotationElement = graphicObj.Element("Rotation")?.Value;
+        string? activeElement = graphicObj.Element("Active")?.Value;
+
+        return new SimulatorModelRevisionDataGraphicalObject
+        {
+            Position = position,
+            Width = double.TryParse(widthElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) ? w : null,
+            Height = double.TryParse(heightElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) ? h : null,
+            Angle = double.TryParse(rotationElement, NumberStyles.Any, CultureInfo.InvariantCulture, out double angle) ? angle : null,
+            // TODO: Add ScaleX/ScaleY once SDK is updated to use double type instead of bool
+            // ScaleX should be -1.0 when FlippedH is true, 1.0 when false
+            // ScaleY should be -1.0 when FlippedV is true, 1.0 when false
+            Active = bool.TryParse(activeElement, out bool active) ? active : null
+        };
+    }
 }
 
 /// <summary>
@@ -146,6 +290,6 @@ public class DwsimModelParser
 /// </summary>
 public class DwsimModelParsingConfig
 {
-    // will be used later when we start to extract nodes
+    // will be used later when we start to extract node properties
     public int MaxPropertiesPerNode { get; set; } = 100;
 }
