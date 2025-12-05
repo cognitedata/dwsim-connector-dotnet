@@ -255,10 +255,26 @@ public class DwsimModelParser
         ILogger? logger = null)
     {
         var edges = new List<SimulatorModelRevisionDataObjectEdge>();
-        Dictionary<string, SimulatorModelRevisionDataObjectNode> nodesByName = nodes.ToDictionary(n => n.Id, n => n);
 
         try
         {
+            // Build node lookup, handling potential null IDs and duplicates safely
+            var duplicateIds = nodes
+                .Where(n => n.Id != null)
+                .GroupBy(n => n.Id!)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateIds.Count > 0)
+            {
+                logger?.LogWarning("Found duplicate node IDs in input: {DuplicateIds}. Using first occurrence of each.", string.Join(", ", duplicateIds));
+            }
+
+            Dictionary<string, SimulatorModelRevisionDataObjectNode> nodesByName = nodes
+                .Where(n => n.Id != null)
+                .GroupBy(n => n.Id!)
+                .ToDictionary(g => g.Key, g => g.First());
             XDocument doc = XDocument.Load(xmlFilePath);
             List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
 
