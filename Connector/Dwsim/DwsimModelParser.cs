@@ -144,19 +144,17 @@ public class DwsimModelParser
     }
 
     /// <summary>
-    /// Parses nodes from XML file
+    /// Parses nodes from XML document
     /// </summary>
-    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="doc">Parsed XML document</param>
     /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>List of parsed nodes</returns>
-    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath, ILogger? logger = null)
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(XDocument doc, ILogger? logger = null)
     {
         var nodes = new List<SimulatorModelRevisionDataObjectNode>();
 
         try
         {
-            XDocument doc = XDocument.Load(xmlFilePath);
-
             // Parse SimulationObjects - only direct children of SimulationObjects element
             List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
 
@@ -197,7 +195,7 @@ public class DwsimModelParser
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, "Failed to load or parse XML file: {XmlFilePath}", xmlFilePath);
+            logger?.LogError(ex, "Failed to parse XML document");
         }
 
         return nodes;
@@ -243,6 +241,136 @@ public class DwsimModelParser
     }
 
     /// <summary>
+    /// Generates flowsheet edges from XML graphic object connections
+    /// </summary>
+    /// <param name="doc">Parsed XML document</param>
+    /// <param name="nodes">List of parsed nodes to reference for edge creation</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <returns>Collection of edges representing connections between nodes</returns>
+    public static IEnumerable<SimulatorModelRevisionDataObjectEdge> GenerateFlowsheetEdgesFromXml(
+        XDocument doc,
+        List<SimulatorModelRevisionDataObjectNode> nodes,
+        ILogger? logger = null)
+    {
+        if (nodes == null || nodes.Count == 0)
+            return [];
+
+        var edges = new List<SimulatorModelRevisionDataObjectEdge>();
+
+        try
+        {
+            // Build node lookup, handling potential null IDs and duplicates safely
+            var duplicateIds = nodes
+                .Where(n => n.Id != null)
+                .GroupBy(n => n.Id!)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateIds.Count > 0)
+            {
+                logger?.LogWarning("Found duplicate node IDs in input: {DuplicateIds}. Using first occurrence of each.", string.Join(", ", duplicateIds));
+            }
+
+            Dictionary<string, SimulatorModelRevisionDataObjectNode> nodesByName = nodes
+                .Where(n => n.Id != null)
+                .GroupBy(n => n.Id!)
+                .ToDictionary(g => g.Key, g => g.First());
+            List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
+
+            foreach (XElement graphicObj in graphicObjects)
+            {
+                try
+                {
+                    string? sourceName = graphicObj.Element("Name")?.Value;
+                    if (string.IsNullOrEmpty(sourceName) || !nodesByName.TryGetValue(sourceName, out SimulatorModelRevisionDataObjectNode? sourceNode))
+                        continue;
+
+                    // Parse output connections from XML
+                    IEnumerable<XElement>? outputConnectors = graphicObj.Element("OutputConnectors")?.Elements("Connector");
+                    if (outputConnectors == null)
+                        continue;
+
+                    foreach (XElement connector in outputConnectors)
+                    {
+                        if (connector.Attribute("IsAttached")?.Value != "true")
+                            continue;
+
+                        string? connectedId = connector.Attribute("AttachedToObjID")?.Value;
+                        if (string.IsNullOrEmpty(connectedId) || !nodesByName.TryGetValue(connectedId, out SimulatorModelRevisionDataObjectNode? targetNode))
+                            continue;
+
+                        SimulatorModelRevisionDataConnectionType connectionType = DetermineConnectionType(sourceNode, targetNode);
+                        var edge = new SimulatorModelRevisionDataObjectEdge
+                        {
+                            Id = $"{sourceName}_{connectedId}",
+                            Name = $"{sourceNode.Name} -> {targetNode.Name}",
+                            SourceId = sourceName,
+                            TargetId = connectedId,
+                            ConnectionType = connectionType
+                        };
+                        edges.Add(edge);
+                    }
+                }
+                catch (Exception e)
+                {
+                    logger?.LogDebug("Error processing connections for graphic object: {EMessage}", e.Message);
+                }
+            }
+
+            // Remove duplicate edges
+            edges = RemoveDuplicateEdges(edges, logger);
+            logger?.LogDebug("Generated {EdgesCount} edges from XML connections", edges.Count);
+        }
+        catch (Exception e)
+        {
+            logger?.LogWarning(e, "Error generating flowsheet edges from XML");
+        }
+
+        return edges;
+    }
+
+    /// <summary>
+    /// Determines the connection type based on source and target node types
+    /// </summary>
+    private static SimulatorModelRevisionDataConnectionType DetermineConnectionType(
+        SimulatorModelRevisionDataObjectNode sourceNode,
+        SimulatorModelRevisionDataObjectNode targetNode)
+    {
+        // Check if it's an energy stream
+        if (sourceNode.Type?.Contains("Energy") == true || targetNode.Type?.Contains("Energy") == true)
+            return SimulatorModelRevisionDataConnectionType.Energy;
+
+        // Check if it's a material stream
+        if (sourceNode.Type?.Contains("Material") == true || targetNode.Type?.Contains("Material") == true)
+            return SimulatorModelRevisionDataConnectionType.Material;
+
+        // Default to information for other connections
+        return SimulatorModelRevisionDataConnectionType.Information;
+    }
+
+    /// <summary>
+    /// Removes duplicate edges based on source and target IDs
+    /// </summary>
+    private static List<SimulatorModelRevisionDataObjectEdge> RemoveDuplicateEdges(
+        List<SimulatorModelRevisionDataObjectEdge> edges,
+        ILogger? logger = null)
+    {
+        var uniqueEdges = new Dictionary<string, SimulatorModelRevisionDataObjectEdge>();
+
+        foreach (SimulatorModelRevisionDataObjectEdge edge in edges)
+        {
+            string key = $"{edge.SourceId}_{edge.TargetId}";
+            uniqueEdges.TryAdd(key, edge);
+        }
+
+        if (edges.Count != uniqueEdges.Count)
+            logger?.LogDebug("Removed {Count} duplicate edges", edges.Count - uniqueEdges.Count);
+
+        return [.. uniqueEdges.Values];
+    }
+
+    /// <summary>
     /// Creates a graphical object from XML element
     /// </summary>
     /// <param name="graphicObj">Graphic object XML element</param>
@@ -281,6 +409,58 @@ public class DwsimModelParser
             // ScaleX should be -1.0 when FlippedH is true, 1.0 when false
             // ScaleY should be -1.0 when FlippedV is true, 1.0 when false
             Active = bool.TryParse(activeElement, out bool active) ? active : null
+        };
+    }
+
+    /// <summary>
+    /// Extracts thermodynamic data (compounds and property packages) from XML
+    /// </summary>
+    /// <param name="doc">Parsed XML document</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <returns>Thermodynamic data containing components and property packages</returns>
+    public static SimulatorModelRevisionDataThermodynamic ExtractThermodynamicDataFromXml(XDocument doc, ILogger? logger = null)
+    {
+        var components = new List<string>();
+        var propertyPackages = new List<string>();
+
+        try
+        {
+            // Extract components from Compounds section
+            IEnumerable<XElement>? compoundElements = doc.Root?.Element("Compounds")?.Elements("Compound");
+            if (compoundElements != null)
+            {
+                foreach (XElement compound in compoundElements)
+                {
+                    string? componentName = compound.Element("Name")?.Value;
+                    if (!string.IsNullOrEmpty(componentName))
+                        components.Add(componentName);
+                }
+            }
+
+            // Extract property packages from PropertyPackages section
+            IEnumerable<XElement>? propertyPackageElements = doc.Root?.Element("PropertyPackages")?.Elements("PropertyPackage");
+            if (propertyPackageElements != null)
+            {
+                foreach (XElement package in propertyPackageElements)
+                {
+                    string? packageName = package.Element("ComponentName")?.Value;
+                    if (!string.IsNullOrEmpty(packageName))
+                        propertyPackages.Add(packageName);
+                }
+            }
+
+            logger?.LogDebug("Extracted {ComponentsCount} components and {PackagesCount} property packages from XML",
+                components.Count, propertyPackages.Count);
+        }
+        catch (Exception e)
+        {
+            logger?.LogWarning(e, "Error extracting thermodynamic data from XML");
+        }
+
+        return new SimulatorModelRevisionDataThermodynamic
+        {
+            Components = components,
+            PropertyPackages = propertyPackages
         };
     }
 }

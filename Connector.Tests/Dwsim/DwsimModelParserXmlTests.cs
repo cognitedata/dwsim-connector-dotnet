@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+using System.Xml.Linq;
 using CogniteSdk.Alpha;
 using Connector.Dwsim;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,12 @@ public class DwsimModelParserXmlTests : IDisposable
     private readonly TestableParser _parser;
     private readonly List<string> _tempDirectories = new();
 
+    // Expected values from ShowerMixer.dwxmz
+    private const string HotWaterId = "MAT-35db8d0f-0c15-46db-8913-163b2a809fc2";
+    private const string ColdWaterId = "MAT-95bdfac9-28cb-42a1-8e96-f0343ebe1b9e";
+    private const string MixerId = "MIST-fd2d8a5c-d194-40e0-8728-efc763d2236a";
+    private const string ShowerWaterId = "MAT-2cdd6910-215c-45f9-a147-71d22dac909d";
+
     public DwsimModelParserXmlTests()
     {
         _testDataPath = Path.Combine(AppContext.BaseDirectory, "TestData");
@@ -36,7 +43,7 @@ public class DwsimModelParserXmlTests : IDisposable
 
     private string ExtractXmlForTesting()
     {
-        string dwxmzPath = Path.Combine(_testDataPath, "minimal_simulation.dwxmz");
+        string dwxmzPath = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
         string xmlPath = _parser.ExtractXmlFromDwxmz(dwxmzPath);
 
         // Track temp directory for cleanup
@@ -45,6 +52,11 @@ public class DwsimModelParserXmlTests : IDisposable
             _tempDirectories.Add(tempDir);
 
         return xmlPath;
+    }
+
+    private XDocument LoadXmlForTesting(string xmlPath)
+    {
+        return XDocument.Load(xmlPath);
     }
 
     public void Dispose()
@@ -62,19 +74,21 @@ public class DwsimModelParserXmlTests : IDisposable
     }
 
     [Fact]
-    public void ParseNodesFromXml_WithMinimalSimulation_ShouldReturnNodes()
+    public void ParseNodesFromXml_WithShowerMixer_ShouldReturnFourNodes()
     {
         // Arrange
         string xmlPath = ExtractXmlForTesting();
 
         try
         {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+
             // Act
-            List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(xmlPath);
+            List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(doc);
 
             // Assert
             Assert.NotNull(nodes);
-            Assert.True(nodes.Count > 0, "Should parse at least one node from minimal_simulation.dwxmz");
+            Assert.Equal(4, nodes.Count);
 
             // Verify all nodes have required properties
             foreach (var node in nodes)
@@ -85,9 +99,15 @@ public class DwsimModelParserXmlTests : IDisposable
                 Assert.NotNull(node.Properties);
             }
 
-            // Check for various node types if they exist
-            var nodeTypes = nodes.Select(n => n.Type).Distinct().ToList();
-            Assert.True(nodeTypes.Count > 0, "Should have at least one node type");
+            // Verify specific nodes exist
+            Assert.Contains(nodes, n => n.Id == HotWaterId);
+            Assert.Contains(nodes, n => n.Id == ColdWaterId);
+            Assert.Contains(nodes, n => n.Id == MixerId);
+            Assert.Contains(nodes, n => n.Id == ShowerWaterId);
+
+            // Verify node types
+            Assert.Equal(3, nodes.Count(n => n.Type == "MaterialStream"));
+            Assert.Equal(1, nodes.Count(n => n.Type == "Mixer"));
         }
         finally
         {
@@ -97,13 +117,13 @@ public class DwsimModelParserXmlTests : IDisposable
     }
 
     [Fact]
-    public void ParseNodesFromXml_WithInvalidXmlPath_ShouldReturnEmptyList()
+    public void ParseNodesFromXml_WithEmptyDocument_ShouldReturnEmptyList()
     {
         // Arrange
-        string invalidPath = Path.Combine(_testDataPath, "nonexistent.xml");
+        var emptyDoc = new XDocument();
 
         // Act
-        List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(invalidPath);
+        List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(emptyDoc);
 
         // Assert
         Assert.NotNull(nodes);
@@ -261,24 +281,27 @@ public class DwsimModelParserXmlTests : IDisposable
 
         try
         {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+
             // Act
-            List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(xmlPath);
+            List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(doc);
 
             // Assert
             Assert.NotNull(nodes);
 
-            // Check if any nodes have graphical properties
+            // All nodes should have graphical properties
             var nodesWithGraphics = nodes.Where(n => n.GraphicalObject != null).ToList();
-            Assert.NotEmpty(nodesWithGraphics);
+            Assert.Equal(4, nodesWithGraphics.Count);
 
-            foreach (var node in nodesWithGraphics)
-            {
-                if (node.GraphicalObject.Width.HasValue)
-                    Assert.True(node.GraphicalObject.Width >= 0);
-
-                if (node.GraphicalObject.Height.HasValue)
-                    Assert.True(node.GraphicalObject.Height >= 0);
-            }
+            // Verify Hot Water stream graphics (X=184.9046, Y=286.0079)
+            var hotWater = nodes.First(n => n.Id == HotWaterId);
+            Assert.NotNull(hotWater.GraphicalObject);
+            Assert.NotNull(hotWater.GraphicalObject.Position);
+            Assert.Equal(184.9046, hotWater.GraphicalObject.Position.X, precision: 4);
+            Assert.Equal(286.0079, hotWater.GraphicalObject.Position.Y, precision: 4);
+            Assert.Equal(20, hotWater.GraphicalObject.Width);
+            Assert.Equal(20, hotWater.GraphicalObject.Height);
+            Assert.True(hotWater.GraphicalObject.Active);
         }
         finally
         {
@@ -319,6 +342,163 @@ public class DwsimModelParserXmlTests : IDisposable
         Assert.Null(node.GraphicalObject.Angle);
         Assert.True(node.GraphicalObject.Active);
     }
+
+    #region Edge Generation Tests
+
+    [Fact]
+    public void GenerateFlowsheetEdgesFromXml_WithShowerMixer_ShouldReturnThreeEdges()
+    {
+        // Arrange
+        string xmlPath = ExtractXmlForTesting();
+
+        try
+        {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+            List<SimulatorModelRevisionDataObjectNode> nodes = DwsimModelParser.ParseNodesFromXml(doc);
+
+            // Act
+            var edges = DwsimModelParser.GenerateFlowsheetEdgesFromXml(doc, nodes).ToList();
+
+            // Assert
+            Assert.Equal(3, edges.Count);
+
+            // Verify Hot Water -> Mixer connection
+            var hotToMixer = edges.FirstOrDefault(e => e.SourceId == HotWaterId && e.TargetId == MixerId);
+            Assert.NotNull(hotToMixer);
+            Assert.Equal(SimulatorModelRevisionDataConnectionType.Material, hotToMixer.ConnectionType);
+
+            // Verify Cold Water -> Mixer connection
+            var coldToMixer = edges.FirstOrDefault(e => e.SourceId == ColdWaterId && e.TargetId == MixerId);
+            Assert.NotNull(coldToMixer);
+            Assert.Equal(SimulatorModelRevisionDataConnectionType.Material, coldToMixer.ConnectionType);
+
+            // Verify Mixer -> Shower Water connection
+            var mixerToShower = edges.FirstOrDefault(e => e.SourceId == MixerId && e.TargetId == ShowerWaterId);
+            Assert.NotNull(mixerToShower);
+        }
+        finally
+        {
+            _parser.CleanupTempFiles(xmlPath);
+        }
+    }
+
+    [Fact]
+    public void GenerateFlowsheetEdgesFromXml_WithEmptyNodeList_ShouldReturnEmptyEdges()
+    {
+        // Arrange
+        string xmlPath = ExtractXmlForTesting();
+
+        try
+        {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+            var emptyNodes = new List<SimulatorModelRevisionDataObjectNode>();
+
+            // Act
+            var edges = DwsimModelParser.GenerateFlowsheetEdgesFromXml(doc, emptyNodes).ToList();
+
+            // Assert - no edges can be created without nodes
+            Assert.Empty(edges);
+        }
+        finally
+        {
+            _parser.CleanupTempFiles(xmlPath);
+        }
+    }
+
+    [Fact]
+    public void GenerateFlowsheetEdgesFromXml_WithNullNodeList_ShouldReturnEmptyEdges()
+    {
+        // Arrange
+        string xmlPath = ExtractXmlForTesting();
+
+        try
+        {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+
+            // Act
+            var edges = DwsimModelParser.GenerateFlowsheetEdgesFromXml(doc, null!).ToList();
+
+            // Assert - no edges can be created without nodes
+            Assert.Empty(edges);
+        }
+        finally
+        {
+            _parser.CleanupTempFiles(xmlPath);
+        }
+    }
+
+    #endregion
+
+    #region Thermodynamic Extraction Tests
+
+    [Fact]
+    public void ExtractThermodynamicDataFromXml_WithShowerMixer_ShouldExtractWaterCompound()
+    {
+        // Arrange
+        string xmlPath = ExtractXmlForTesting();
+
+        try
+        {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+
+            // Act
+            var thermodynamics = DwsimModelParser.ExtractThermodynamicDataFromXml(doc);
+
+            // Assert
+            Assert.NotNull(thermodynamics);
+            Assert.NotNull(thermodynamics.Components);
+            Assert.Single(thermodynamics.Components);
+            Assert.Contains("Water", thermodynamics.Components);
+        }
+        finally
+        {
+            _parser.CleanupTempFiles(xmlPath);
+        }
+    }
+
+    [Fact]
+    public void ExtractThermodynamicDataFromXml_WithShowerMixer_ShouldExtractPropertyPackage()
+    {
+        // Arrange
+        string xmlPath = ExtractXmlForTesting();
+
+        try
+        {
+            XDocument doc = LoadXmlForTesting(xmlPath);
+
+            // Act
+            var thermodynamics = DwsimModelParser.ExtractThermodynamicDataFromXml(doc);
+
+            // Assert
+            Assert.NotNull(thermodynamics);
+            Assert.NotNull(thermodynamics.PropertyPackages);
+            Assert.Single(thermodynamics.PropertyPackages);
+            Assert.Contains("Steam Tables (IAPWS-IF97)", thermodynamics.PropertyPackages);
+        }
+        finally
+        {
+            _parser.CleanupTempFiles(xmlPath);
+        }
+    }
+
+    [Fact]
+    public void ExtractThermodynamicDataFromXml_WithEmptyDocument_ShouldReturnEmptyLists()
+    {
+        // Arrange
+        var emptyDoc = new XDocument();
+
+        // Act
+        var thermodynamics = DwsimModelParser.ExtractThermodynamicDataFromXml(emptyDoc);
+
+        // Assert
+        Assert.NotNull(thermodynamics);
+        Assert.NotNull(thermodynamics.Components);
+        Assert.NotNull(thermodynamics.PropertyPackages);
+        Assert.Empty(thermodynamics.Components);
+        Assert.Empty(thermodynamics.PropertyPackages);
+    }
+
+    #endregion
 
     private class TestableParser(
         ILogger<DwsimClient> logger,
