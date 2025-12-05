@@ -144,19 +144,17 @@ public class DwsimModelParser
     }
 
     /// <summary>
-    /// Parses nodes from XML file
+    /// Parses nodes from XML document
     /// </summary>
-    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="doc">Parsed XML document</param>
     /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>List of parsed nodes</returns>
-    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(string xmlFilePath, ILogger? logger = null)
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(XDocument doc, ILogger? logger = null)
     {
         var nodes = new List<SimulatorModelRevisionDataObjectNode>();
 
         try
         {
-            XDocument doc = XDocument.Load(xmlFilePath);
-
             // Parse SimulationObjects - only direct children of SimulationObjects element
             List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
 
@@ -197,7 +195,7 @@ public class DwsimModelParser
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, "Failed to load or parse XML file: {XmlFilePath}", xmlFilePath);
+            logger?.LogError(ex, "Failed to parse XML document");
         }
 
         return nodes;
@@ -245,15 +243,18 @@ public class DwsimModelParser
     /// <summary>
     /// Generates flowsheet edges from XML graphic object connections
     /// </summary>
-    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="doc">Parsed XML document</param>
     /// <param name="nodes">List of parsed nodes to reference for edge creation</param>
     /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>Collection of edges representing connections between nodes</returns>
     public static IEnumerable<SimulatorModelRevisionDataObjectEdge> GenerateFlowsheetEdgesFromXml(
-        string xmlFilePath,
+        XDocument doc,
         List<SimulatorModelRevisionDataObjectNode> nodes,
         ILogger? logger = null)
     {
+        if (nodes == null || nodes.Count == 0)
+            return [];
+
         var edges = new List<SimulatorModelRevisionDataObjectEdge>();
 
         try
@@ -275,7 +276,6 @@ public class DwsimModelParser
                 .Where(n => n.Id != null)
                 .GroupBy(n => n.Id!)
                 .ToDictionary(g => g.Key, g => g.First());
-            XDocument doc = XDocument.Load(xmlFilePath);
             List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
 
             foreach (XElement graphicObj in graphicObjects)
@@ -415,18 +415,16 @@ public class DwsimModelParser
     /// <summary>
     /// Extracts thermodynamic data (compounds and property packages) from XML
     /// </summary>
-    /// <param name="xmlFilePath">Path to the XML file</param>
+    /// <param name="doc">Parsed XML document</param>
     /// <param name="logger">Logger for diagnostic messages</param>
     /// <returns>Thermodynamic data containing components and property packages</returns>
-    public static SimulatorModelRevisionDataThermodynamic ExtractThermodynamicDataFromXml(string xmlFilePath, ILogger? logger = null)
+    public static SimulatorModelRevisionDataThermodynamic ExtractThermodynamicDataFromXml(XDocument doc, ILogger? logger = null)
     {
         var components = new List<string>();
         var propertyPackages = new List<string>();
 
         try
         {
-            XDocument doc = XDocument.Load(xmlFilePath);
-
             // Extract components from Compounds section
             IEnumerable<XElement>? compoundElements = doc.Root?.Element("Compounds")?.Elements("Compound");
             if (compoundElements != null)
