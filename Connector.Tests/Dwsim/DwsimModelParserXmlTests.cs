@@ -106,7 +106,7 @@ public class DwsimModelParserXmlTests : IDisposable
             Assert.Contains(nodes, n => n.Id == ShowerWaterId);
 
             // Verify node types
-            Assert.Equal(3, nodes.Count(n => n.Type == "MaterialStream"));
+            Assert.Equal(3, nodes.Count(n => n.Type == "Material Stream"));
             Assert.Equal(1, nodes.Count(n => n.Type == "Mixer"));
         }
         finally
@@ -191,7 +191,7 @@ public class DwsimModelParserXmlTests : IDisposable
         Assert.NotNull(node);
         Assert.Equal("TestStream", node.Id);
         Assert.Equal("TestStream", node.Name);
-        Assert.Equal("MaterialStream", node.Type);
+        Assert.Equal("Material Stream", node.Type);
         Assert.Null(node.GraphicalObject);
     }
 

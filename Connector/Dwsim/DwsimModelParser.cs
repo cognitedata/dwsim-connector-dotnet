@@ -30,6 +30,49 @@ public class DwsimModelParser
     private readonly DwsimModelParsingConfig _modelParsingConfig;
     private readonly dynamic? _unitSystem;
 
+    /// <summary>
+    /// Known material stream type names in DWSIM
+    /// </summary>
+    private static readonly HashSet<string> MaterialStreamTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "MaterialStream",
+        "Material Stream",
+        "CorrentedeMatria"
+    };
+
+    /// <summary>
+    /// Known energy stream type names in DWSIM
+    /// </summary>
+    private static readonly HashSet<string> EnergyStreamTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "EnergyStream",
+        "Energy Stream"
+    };
+
+    /// <summary>
+    /// Standardized type names for streams
+    /// </summary>
+    private const string StandardMaterialStreamType = "Material Stream";
+    private const string StandardEnergyStreamType = "Energy Stream";
+
+    /// <summary>
+    /// Normalizes a stream type to its standardized form.
+    /// Material stream variants become "Material Stream", energy stream variants become "Energy Stream".
+    /// Other types are returned unchanged.
+    /// </summary>
+    /// <param name="originalType">The original type from XML</param>
+    /// <returns>Normalized type string</returns>
+    private static string NormalizeStreamType(string originalType)
+    {
+        if (MaterialStreamTypes.Contains(originalType))
+            return StandardMaterialStreamType;
+
+        if (EnergyStreamTypes.Contains(originalType))
+            return StandardEnergyStreamType;
+
+        return originalType;
+    }
+
     public DwsimModelParser(ILogger<DwsimClient> logger, Dictionary<string, string> propMap, string dwsimInstallationPath)
         : this(logger, propMap, dwsimInstallationPath, null)
     {
@@ -221,12 +264,15 @@ public class DwsimModelParser
             if (string.IsNullOrEmpty(objectId) || string.IsNullOrEmpty(objectType))
                 return null;
 
+            // Normalize stream types to standardized names (e.g., "MaterialStream" -> "Material Stream")
+            string normalizedType = NormalizeStreamType(objectType);
+
             // Create node with basic information
             var node = new SimulatorModelRevisionDataObjectNode
             {
                 Id = objectId,
                 Name = objectName,
-                Type = objectType,
+                Type = normalizedType,
                 Properties = new List<SimulatorModelRevisionDataProperty>(),
                 GraphicalObject = CreateGraphicalObjectFromXml(graphicObj)
             };
@@ -331,18 +377,18 @@ public class DwsimModelParser
     }
 
     /// <summary>
-    /// Determines the connection type based on source and target node types
+    /// Determines the connection type based on source and target node types.
     /// </summary>
     private static SimulatorModelRevisionDataConnectionType DetermineConnectionType(
         SimulatorModelRevisionDataObjectNode sourceNode,
         SimulatorModelRevisionDataObjectNode targetNode)
     {
         // Check if it's an energy stream
-        if (sourceNode.Type?.Contains("Energy") == true || targetNode.Type?.Contains("Energy") == true)
+        if (sourceNode.Type == StandardEnergyStreamType || targetNode.Type == StandardEnergyStreamType)
             return SimulatorModelRevisionDataConnectionType.Energy;
 
         // Check if it's a material stream
-        if (sourceNode.Type?.Contains("Material") == true || targetNode.Type?.Contains("Material") == true)
+        if (sourceNode.Type == StandardMaterialStreamType || targetNode.Type == StandardMaterialStreamType)
             return SimulatorModelRevisionDataConnectionType.Material;
 
         // Default to information for other connections
