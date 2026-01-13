@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+using System.Collections;
 using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
@@ -508,6 +509,230 @@ public class DwsimModelParser
             Components = components,
             PropertyPackages = propertyPackages
         };
+    }
+
+    /// <summary>
+    /// Extracts properties from a DWSIM COM object
+    /// </summary>
+    /// <param name="obj">The COM object to extract properties from</param>
+    /// <param name="objectType">Type of the object</param>
+    /// <param name="nodeName">Name of the node</param>
+    /// <returns>List of extracted properties</returns>
+    internal List<SimulatorModelRevisionDataProperty> ExtractNodePropertiesFromCom(
+        dynamic obj, string objectType, string nodeName)
+    {
+        var properties = new List<SimulatorModelRevisionDataProperty>();
+        int extractedCount = 0;
+
+        try
+        {
+            // Get write and read properties using GetProperties method exposed by the BaseClass interface
+            // https://dwsim.org/api_help/html/T_DWSIM_SharedClasses_UnitOperations_BaseClass.htm
+            // GetProperties(1) returns only properties that can be written to
+            // GetProperties(3) returns all properties that can be read from
+            dynamic? writeProperties = obj.GetProperties(1);
+            dynamic? readProperties = obj.GetProperties(3);
+
+            // Combine all properties, avoiding duplicates
+            var allProperties = new HashSet<string>(writeProperties);
+            foreach (string prop in readProperties)
+            {
+                allProperties.Add(prop);
+            }
+
+            foreach (string property in allProperties)
+            {
+                if (extractedCount >= _modelParsingConfig.MaxPropertiesPerNode)
+                {
+                    _logger.LogDebug("Reached max properties limit ({MaxProperties}) for node {NodeName}",
+                        _modelParsingConfig.MaxPropertiesPerNode, nodeName);
+                    break;
+                }
+
+                try
+                {
+                    SimulatorModelRevisionDataProperty? modelProperty =
+                        CreateModelProperty(property, obj, objectType, nodeName, writeProperties);
+                    if (modelProperty != null)
+                    {
+                        properties.Add(modelProperty);
+                        extractedCount++;
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.LogDebug("Skipped property {PropName} for node {NodeName}: {EMessage}",
+                        property, nodeName, e.Message);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning("Error extracting properties from COM object for node {NodeName}: {EMessage}",
+                nodeName, e.Message);
+        }
+
+        return properties;
+    }
+
+    /// <summary>
+    /// Creates a model property from a DWSIM COM object property
+    /// </summary>
+    /// <param name="propertyKey">The property key</param>
+    /// <param name="obj">The COM object</param>
+    /// <param name="objectType">Type of the object</param>
+    /// <param name="objectName">Name of the object</param>
+    /// <param name="writeProperties">List of writable properties</param>
+    /// <returns>Created property or null if property cannot be processed</returns>
+    internal SimulatorModelRevisionDataProperty? CreateModelProperty(
+        string propertyKey, dynamic obj, string objectType,
+        string objectName, dynamic writeProperties)
+    {
+        try
+        {
+            // Get property value from COM object
+            // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_UnitOperations_BaseClass_GetPropertyValue.htm
+            dynamic value = obj.GetPropertyValue(propertyKey);
+            if (value == null)
+                return null;
+
+            // Handle PROP_ prefix translation using prop map
+            // Some properties have internal keys that are not human readable names
+            // Example: "PROP_MS_0" -> "Temperature"
+            //          "PROP_MS_105/Oxygen" -> "Mass Flow (Mixture)/Oxygen"
+            // https://dwsim.org/wiki/index.php?title=Object_Property_Codes
+            string propertyName = propertyKey;
+            if (propertyKey.StartsWith("PROP"))
+            {
+                // Mixture properties contain a suffix after a slash (e.g., PROP_MS_105/Oxygen)
+                // We translate only the PROP_ part and preserve the suffix
+                string[] parts = propertyKey.Split('/', 2);
+                string propCode = parts[0];  // e.g., "PROP_MS_105"
+                string? suffix = parts.Length > 1 ? parts[1] : null;  // e.g., "Oxygen"
+
+                if (_propMap.TryGetValue(propCode, out string? humanReadableName))
+                {
+                    propertyName = suffix != null
+                        ? $"{humanReadableName}/{suffix}"
+                        : humanReadableName;
+                }
+            }
+
+            // Get unit information from COM object
+            // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_UnitOperations_BaseClass_GetPropertyUnit.htm
+            string unit = obj.GetPropertyUnit(propertyKey) ?? "";
+            SimulatorValueUnitReference? unitReference = null;
+            if (!string.IsNullOrEmpty(unit))
+            {
+                // Map unit to unit type using DWSIM unit system
+                // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_SystemsOfUnits_Units_GetUnitType.htm
+                string unitType = _unitSystem?.GetUnitType(unit)?.ToString() ?? "";
+                if (unitType != "none" && !string.IsNullOrEmpty(unitType))
+                {
+                    unitReference = new SimulatorValueUnitReference
+                    {
+                        Name = unit,
+                        Quantity = unitType
+                    };
+                }
+            }
+
+            // Determine value type and create simulator value
+            SimulatorValueType valueType;
+            SimulatorValue? simulatorValue;
+
+            switch (value)
+            {
+                case double doubleValue when double.IsNaN(doubleValue) || double.IsInfinity(doubleValue):
+                    return null;
+                case double doubleValue:
+                    valueType = SimulatorValueType.DOUBLE;
+                    simulatorValue = SimulatorValue.Create(doubleValue);
+                    break;
+
+                case float floatValue when float.IsNaN(floatValue) || float.IsInfinity(floatValue):
+                    return null;
+                case float floatValue:
+                    valueType = SimulatorValueType.DOUBLE;
+                    simulatorValue = SimulatorValue.Create((double)floatValue);
+                    break;
+
+                case int intValue:
+                    valueType = SimulatorValueType.DOUBLE;
+                    simulatorValue = SimulatorValue.Create(intValue);
+                    break;
+
+                // TODO: Update logic if we extend the API to support boolean type natively
+                case bool boolValue:
+                    valueType = SimulatorValueType.DOUBLE;
+                    simulatorValue = SimulatorValue.Create(boolValue ? 1.0 : 0.0);
+                    break;
+
+                case string stringValue:
+                    valueType = SimulatorValueType.STRING;
+                    simulatorValue = SimulatorValue.Create(stringValue);
+                    break;
+
+                case Array { Length: 0 }:
+                    return null;
+
+                case Array arrayValue:
+                {
+                    // All elements in arrays are of the same type in DWSIM
+                    object? firstElement = arrayValue.GetValue(0);
+                    if (firstElement is double or float or int)
+                    {
+                        valueType = SimulatorValueType.DOUBLE_ARRAY;
+                        double[] doubleArray = new double[arrayValue.Length];
+                        for (int i = 0; i < arrayValue.Length; i++)
+                        {
+                            doubleArray[i] = Convert.ToDouble(arrayValue.GetValue(i));
+                        }
+                        simulatorValue = SimulatorValue.Create(doubleArray);
+                    }
+                    else
+                    {
+                        valueType = SimulatorValueType.STRING_ARRAY;
+                        string[] stringArray = new string[arrayValue.Length];
+                        for (int i = 0; i < arrayValue.Length; i++)
+                        {
+                            stringArray[i] = arrayValue.GetValue(i)?.ToString() ?? "";
+                        }
+                        simulatorValue = SimulatorValue.Create(stringArray);
+                    }
+                    break;
+                }
+
+                default:
+                    string valueTypeName = value.GetType().Name;
+                    _logger.LogDebug("Unsupported value type {ValueType} for property {PropKey}",
+                        valueTypeName, propertyKey);
+                    return null;
+            }
+
+            // Check if property is read-only by checking if it's in the write properties list
+            bool isReadOnly = !((IList)writeProperties).Contains(propertyKey);
+
+            return new SimulatorModelRevisionDataProperty
+            {
+                Name = propertyName, // Human-readable name
+                ValueType = valueType,
+                Value = simulatorValue,
+                Unit = unitReference,
+                ReadOnly = isReadOnly,
+                ReferenceObject = new Dictionary<string, string>
+                {
+                    { "objectType", objectType },
+                    { "objectName", objectName },
+                    { "objectProperty", propertyKey } // access is done using the internal property key
+                }
+            };
+        }
+        catch (Exception e)
+        {
+            _logger.LogDebug("Error creating model property for {PropKey}: {EMessage}", propertyKey, e.Message);
+            return null;
+        }
     }
 }
 
