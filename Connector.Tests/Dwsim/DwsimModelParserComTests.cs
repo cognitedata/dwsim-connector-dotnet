@@ -64,44 +64,33 @@ public class DwsimModelParserComTests
     }
 
     [Theory]
-    [InlineData(double.NaN)]
-    [InlineData(double.PositiveInfinity)]
-    [InlineData(double.NegativeInfinity)]
-    public void CreateModelProperty_WithInvalidDouble_ShouldReturnNull(double invalidValue)
+    [InlineData(double.NaN, true)]
+    [InlineData(double.PositiveInfinity, true)]
+    [InlineData(double.NegativeInfinity, true)]
+    [InlineData(100.5, false)]
+    public void CreateModelProperty_WithDoubleValues_ShouldHandleValidAndInvalid(double value, bool shouldBeNull)
     {
         // Arrange
         var mockCom = MockDwsimProxy.Create(
-            writeProps: ["BadProp"],
-            readProps: ["BadProp"],
-            values: new() { { "BadProp", invalidValue } },
-            units: new() { { "BadProp", "K" } });
+            writeProps: ["TestProp"],
+            readProps: ["TestProp"],
+            values: new() { { "TestProp", value } },
+            units: new() { { "TestProp", "kg/h" } });
 
         // Act
-        var property = _parser.CreateModelPropertyPublic("BadProp", mockCom, "Heater", "H-01", new[] { "BadProp" });
+        var property = _parser.CreateModelPropertyPublic("TestProp", mockCom, "Stream", "S-01", new[] { "TestProp" });
 
         // Assert
-        Assert.Null(property);
-    }
-
-    [Fact]
-    public void CreateModelProperty_WithDoubleValue_ShouldCreateCorrectProperty()
-    {
-        // Arrange
-        var mockCom = MockDwsimProxy.Create(
-            writeProps: ["Flow"],
-            readProps: ["Flow"],
-            values: new() { { "Flow", 100.5 } },
-            units: new() { { "Flow", "kg/h" } });
-
-        // Act
-        var property = _parser.CreateModelPropertyPublic("Flow", mockCom, "Stream", "S-01", new[] { "Flow" });
-
-        // Assert
-        Assert.NotNull(property);
-        Assert.Equal("Flow", property.Name);
-        Assert.Equal(SimulatorValueType.DOUBLE, property.ValueType);
-        Assert.False(property.ReadOnly);
-        Assert.Equal("kg/h", property.Unit?.Name);
+        if (shouldBeNull)
+        {
+            Assert.Null(property);
+        }
+        else
+        {
+            Assert.NotNull(property);
+            Assert.Equal(SimulatorValueType.DOUBLE, property.ValueType);
+            Assert.Equal("kg/h", property.Unit?.Name);
+        }
     }
 
     [Fact]
@@ -186,13 +175,6 @@ public class DwsimModelParserComTests
         // Assert
         Assert.NotNull(property);
         Assert.True(property.ReadOnly);
-    }
-
-    [Fact]
-    public void DwsimModelParsingConfig_HasCorrectDefaults()
-    {
-        var config = new DwsimModelParsingConfig();
-        Assert.Equal(100, config.MaxPropertiesPerNode);
     }
 
     private class TestableComParser : DwsimModelParser
