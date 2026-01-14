@@ -596,135 +596,24 @@ public class DwsimModelParser
             if (value == null)
                 return null;
 
-            // Handle PROP_ prefix translation using prop map
-            // Some properties have internal keys that are not human readable names
-            // Example: "PROP_MS_0" -> "Temperature"
-            //          "PROP_MS_105/Oxygen" -> "Mass Flow (Mixture)/Oxygen"
-            // https://dwsim.org/wiki/index.php?title=Object_Property_Codes
-            string propertyName = propertyKey;
-            if (propertyKey.StartsWith("PROP"))
-            {
-                // Mixture properties contain a suffix after a slash (e.g., PROP_MS_105/Oxygen)
-                // We translate only the PROP_ part and preserve the suffix
-                string[] parts = propertyKey.Split('/', 2);
-                string propCode = parts[0];  // e.g., "PROP_MS_105"
-                string? suffix = parts.Length > 1 ? parts[1] : null;  // e.g., "Oxygen"
+            SimulatorValue? simulatorValue = ConvertToSimulatorValue(value, propertyKey);
+            if (simulatorValue == null)
+                return null;
 
-                if (_propMap.TryGetValue(propCode, out string? humanReadableName))
-                {
-                    propertyName = suffix != null
-                        ? $"{humanReadableName}/{suffix}"
-                        : humanReadableName;
-                }
-            }
-
-            // Get unit information from COM object
-            // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_UnitOperations_BaseClass_GetPropertyUnit.htm
-            string unit = obj.GetPropertyUnit(propertyKey) ?? "";
-            SimulatorValueUnitReference? unitReference = null;
-            if (!string.IsNullOrEmpty(unit))
-            {
-                // Map unit to unit type using DWSIM unit system
-                // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_SystemsOfUnits_Units_GetUnitType.htm
-                string unitType = _unitSystem?.GetUnitType(unit)?.ToString() ?? "";
-                if (unitType != "none" && !string.IsNullOrEmpty(unitType))
-                {
-                    unitReference = new SimulatorValueUnitReference
-                    {
-                        Name = unit,
-                        Quantity = unitType
-                    };
-                }
-            }
-
-            // Determine value type and create simulator value
-            SimulatorValueType valueType;
-            SimulatorValue? simulatorValue;
-
-            switch (value)
-            {
-                case double doubleValue when double.IsNaN(doubleValue) || double.IsInfinity(doubleValue):
-                    return null;
-                case double doubleValue:
-                    valueType = SimulatorValueType.DOUBLE;
-                    simulatorValue = SimulatorValue.Create(doubleValue);
-                    break;
-
-                case float floatValue when float.IsNaN(floatValue) || float.IsInfinity(floatValue):
-                    return null;
-                case float floatValue:
-                    valueType = SimulatorValueType.DOUBLE;
-                    simulatorValue = SimulatorValue.Create((double)floatValue);
-                    break;
-
-                case int intValue:
-                    valueType = SimulatorValueType.DOUBLE;
-                    simulatorValue = SimulatorValue.Create(intValue);
-                    break;
-
-                // TODO: Update logic if we extend the API to support boolean type natively
-                case bool boolValue:
-                    valueType = SimulatorValueType.DOUBLE;
-                    simulatorValue = SimulatorValue.Create(boolValue ? 1.0 : 0.0);
-                    break;
-
-                case string stringValue:
-                    valueType = SimulatorValueType.STRING;
-                    simulatorValue = SimulatorValue.Create(stringValue);
-                    break;
-
-                case Array { Length: 0 }:
-                    return null;
-
-                case Array arrayValue:
-                {
-                    // All elements in arrays are of the same type in DWSIM
-                    object? firstElement = arrayValue.GetValue(0);
-                    if (firstElement is double or float or int)
-                    {
-                        valueType = SimulatorValueType.DOUBLE_ARRAY;
-                        double[] doubleArray = new double[arrayValue.Length];
-                        for (int i = 0; i < arrayValue.Length; i++)
-                        {
-                            doubleArray[i] = Convert.ToDouble(arrayValue.GetValue(i));
-                        }
-                        simulatorValue = SimulatorValue.Create(doubleArray);
-                    }
-                    else
-                    {
-                        valueType = SimulatorValueType.STRING_ARRAY;
-                        string[] stringArray = new string[arrayValue.Length];
-                        for (int i = 0; i < arrayValue.Length; i++)
-                        {
-                            stringArray[i] = arrayValue.GetValue(i)?.ToString() ?? "";
-                        }
-                        simulatorValue = SimulatorValue.Create(stringArray);
-                    }
-                    break;
-                }
-
-                default:
-                    string valueTypeName = value.GetType().Name;
-                    _logger.LogDebug("Unsupported value type {ValueType} for property {PropKey}",
-                        valueTypeName, propertyKey);
-                    return null;
-            }
-
-            // Check if property is read-only by checking if it's in the write properties list
             bool isReadOnly = !((IList)writeProperties).Contains(propertyKey);
 
             return new SimulatorModelRevisionDataProperty
             {
-                Name = propertyName, // Human-readable name
-                ValueType = valueType,
+                Name = GetHumanReadablePropertyName(propertyKey),
+                ValueType = simulatorValue.Type,
                 Value = simulatorValue,
-                Unit = unitReference,
+                Unit = GetUnitReference(obj, propertyKey),
                 ReadOnly = isReadOnly,
                 ReferenceObject = new Dictionary<string, string>
                 {
                     { "objectType", objectType },
                     { "objectName", objectName },
-                    { "objectProperty", propertyKey } // access is done using the internal property key
+                    { "objectProperty", propertyKey }
                 }
             };
         }
@@ -732,6 +621,98 @@ public class DwsimModelParser
         {
             _logger.LogDebug("Error creating model property for {PropKey}: {EMessage}", propertyKey, e.Message);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Translates DWSIM internal property keys to human-readable names.
+    /// Example: "PROP_MS_0" -> "Temperature", "PROP_MS_105/Oxygen" -> "Mass Flow (Mixture)/Oxygen"
+    /// https://dwsim.org/wiki/index.php?title=Object_Property_Codes
+    /// </summary>
+    internal string GetHumanReadablePropertyName(string propertyKey)
+    {
+        if (!propertyKey.StartsWith("PROP"))
+            return propertyKey;
+
+        // Mixture properties contain a suffix after a slash (e.g., PROP_MS_105/Oxygen)
+        string[] parts = propertyKey.Split('/', 2);
+        string propCode = parts[0];
+        string? suffix = parts.Length > 1 ? parts[1] : null;
+
+        if (_propMap.TryGetValue(propCode, out string? humanReadableName))
+        {
+            return suffix != null ? $"{humanReadableName}/{suffix}" : humanReadableName;
+        }
+        return propertyKey;
+    }
+
+    /// <summary>
+    /// Gets unit reference information from a COM object for a given property.
+    /// </summary>
+    internal SimulatorValueUnitReference? GetUnitReference(dynamic obj, string propertyKey)
+    {
+        // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_UnitOperations_BaseClass_GetPropertyUnit.htm
+        string unit = obj.GetPropertyUnit(propertyKey) ?? "";
+        if (string.IsNullOrEmpty(unit))
+            return null;
+
+        // Map unit to unit type using DWSIM unit system
+        // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_SystemsOfUnits_Units_GetUnitType.htm
+        string unitType = _unitSystem?.GetUnitType(unit)?.ToString() ?? "";
+        if (unitType == "none" || string.IsNullOrEmpty(unitType))
+            return null;
+
+        return new SimulatorValueUnitReference { Name = unit, Quantity = unitType };
+    }
+
+    /// <summary>
+    /// Converts a raw COM property value to a SimulatorValue.
+    /// Returns null for invalid values (NaN, Infinity, empty arrays, unsupported types).
+    /// </summary>
+    internal SimulatorValue? ConvertToSimulatorValue(dynamic value, string propertyKey)
+    {
+        switch (value)
+        {
+            case double d when double.IsNaN(d) || double.IsInfinity(d):
+            case float f when float.IsNaN(f) || float.IsInfinity(f):
+            case Array { Length: 0 }:
+                return null;
+
+            case double d:
+                return SimulatorValue.Create(d);
+            case float f:
+                return SimulatorValue.Create((double)f);
+            case int i:
+                return SimulatorValue.Create(i);
+            // TODO: Update logic if we extend the API to support boolean type natively
+            case bool b:
+                return SimulatorValue.Create(b ? 1.0 : 0.0);
+            case string s:
+                return SimulatorValue.Create(s);
+
+            case Array arr:
+                // All elements in arrays are of the same type in DWSIM
+                object? first = arr.GetValue(0);
+                if (first is double or float or int)
+                {
+                    double[] doubles = new double[arr.Length];
+                    for (int i = 0; i < arr.Length; i++)
+                        doubles[i] = Convert.ToDouble(arr.GetValue(i));
+                    return SimulatorValue.Create(doubles);
+                }
+                else
+                {
+                    string[] strings = new string[arr.Length];
+                    for (int i = 0; i < arr.Length; i++)
+                        strings[i] = arr.GetValue(i)?.ToString() ?? "";
+                    return SimulatorValue.Create(strings);
+                }
+
+            default:
+                string typeName = value.GetType().Name;
+                _logger.LogDebug("Unsupported value type {ValueType} for property {PropKey}",
+                    typeName, propertyKey);
+                return null;
         }
     }
 }
