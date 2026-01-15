@@ -697,7 +697,15 @@ public class DwsimModelParser
                 {
                     double[] doubles = new double[arr.Length];
                     for (int i = 0; i < arr.Length; i++)
-                        doubles[i] = Convert.ToDouble(arr.GetValue(i));
+                    {
+                        double val = Convert.ToDouble(arr.GetValue(i));
+                        if (double.IsNaN(val) || double.IsInfinity(val))
+                        {
+                            _logger.LogDebug("Array for property {PropKey} contains invalid double value at index {Index}", propertyKey, i);
+                            return null;
+                        }
+                        doubles[i] = val;
+                    }
                     return SimulatorValue.Create(doubles);
                 }
                 else
