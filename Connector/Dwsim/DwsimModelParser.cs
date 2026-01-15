@@ -534,11 +534,12 @@ public class DwsimModelParser
             dynamic? readProperties = obj.GetProperties(3);
 
             // Combine all properties, avoiding duplicates
-            var allProperties = new HashSet<string>(writeProperties);
-            foreach (string prop in readProperties)
-            {
-                allProperties.Add(prop);
-            }
+            var allProperties = new HashSet<string>();
+            if (writeProperties != null)
+                foreach (string prop in writeProperties) allProperties.Add(prop);
+
+            if (readProperties != null)
+                foreach (string prop in readProperties) allProperties.Add(prop);
 
             foreach (string property in allProperties)
             {
@@ -600,7 +601,7 @@ public class DwsimModelParser
             if (simulatorValue == null)
                 return null;
 
-            bool isReadOnly = !((IList)writeProperties).Contains(propertyKey);
+            bool isReadOnly = writeProperties is null || !((IList)writeProperties).Contains(propertyKey);
 
             return new SimulatorModelRevisionDataProperty
             {
