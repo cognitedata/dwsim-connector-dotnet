@@ -48,14 +48,14 @@ public class DwsimModelParserComTests
     public void ExtractNodePropertiesFromCom_WithValidProperties_ShouldReturnProperties()
     {
         // Arrange
-        var mockCom = MockDwsimProxy.Create(
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["Temperature", "Pressure"],
             readProps: ["Temperature", "Pressure", "Density"],
             values: new() { { "Temperature", 25.5 }, { "Pressure", 101325.0 }, { "Density", 1000.0 } },
             units: new() { { "Temperature", "C" }, { "Pressure", "Pa" }, { "Density", "kg/m3" } });
 
         // Act
-        List<SimulatorModelRevisionDataProperty> properties = _parser.ExtractNodePropertiesFromComPublic(mockCom, "MaterialStream", "S-01");
+        List<SimulatorModelRevisionDataProperty> properties = _parser.DoExtractNodePropertiesFromCom(mockCom, "MaterialStream", "S-01");
 
         // Assert
         Assert.Equal(3, properties.Count);
@@ -71,14 +71,14 @@ public class DwsimModelParserComTests
     public void CreateModelProperty_WithDoubleValues_ShouldHandleValidAndInvalid(double value, bool shouldBeNull)
     {
         // Arrange
-        var mockCom = MockDwsimProxy.Create(
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["TestProp"],
             readProps: ["TestProp"],
             values: new() { { "TestProp", value } },
             units: new() { { "TestProp", "kg/h" } });
 
         // Act
-        var property = _parser.CreateModelPropertyPublic("TestProp", mockCom, "Stream", "S-01", new[] { "TestProp" });
+        dynamic property = _parser.DoCreateModelProperty("TestProp", mockCom, "Stream", "S-01", new[] { "TestProp" });
 
         // Assert
         if (shouldBeNull)
@@ -97,14 +97,14 @@ public class DwsimModelParserComTests
     public void CreateModelProperty_WithBoolValue_ShouldConvertToDouble()
     {
         // Arrange
-        var mockCom = MockDwsimProxy.Create(
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["Active"],
             readProps: ["Active"],
             values: new() { { "Active", true } },
             units: new() { { "Active", "" } });
 
         // Act
-        var property = _parser.CreateModelPropertyPublic("Active", mockCom, "Valve", "V-01", new[] { "Active" });
+        dynamic property = _parser.DoCreateModelProperty("Active", mockCom, "Valve", "V-01", new[] { "Active" });
 
         // Assert
         Assert.NotNull(property);
@@ -117,21 +117,21 @@ public class DwsimModelParserComTests
     public void CreateModelProperty_WithPropPrefix_ShouldTranslateName()
     {
         // Arrange
-        var mockCom = MockDwsimProxy.Create(
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["PROP_MS_0", "PROP_MS_105/Oxygen"],
             readProps: ["PROP_MS_0", "PROP_MS_105/Oxygen"],
             values: new() { { "PROP_MS_0", 298.15 }, { "PROP_MS_105/Oxygen", 0.21 } },
             units: new() { { "PROP_MS_0", "K" }, { "PROP_MS_105/Oxygen", "kg/s" } });
 
         // Act - Test simple PROP translation
-        var property = _parser.CreateModelPropertyPublic("PROP_MS_0", mockCom, "Stream", "S-01", new[] { "PROP_MS_0", "PROP_MS_105/Oxygen" });
+        dynamic property = _parser.DoCreateModelProperty("PROP_MS_0", mockCom, "Stream", "S-01", new[] { "PROP_MS_0", "PROP_MS_105/Oxygen" });
 
         // Assert
         Assert.NotNull(property);
         Assert.Equal("Temperature", property.Name);
 
         // Act - Test PROP with suffix translation (mixture property)
-        var mixtureProperty = _parser.CreateModelPropertyPublic("PROP_MS_105/Oxygen", mockCom, "Stream", "S-01", new[] { "PROP_MS_0", "PROP_MS_105/Oxygen" });
+        dynamic mixtureProperty = _parser.DoCreateModelProperty("PROP_MS_105/Oxygen", mockCom, "Stream", "S-01", new[] { "PROP_MS_0", "PROP_MS_105/Oxygen" });
 
         // Assert
         Assert.NotNull(mixtureProperty);
@@ -144,15 +144,15 @@ public class DwsimModelParserComTests
     public void CreateModelProperty_WithDoubleArray_ShouldCreateArrayProperty()
     {
         // Arrange
-        var array = new double[] { 0.25, 0.50, 0.25 };
-        var mockCom = MockDwsimProxy.Create(
+        double[] array = [0.25, 0.50, 0.25];
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["Composition"],
             readProps: ["Composition"],
             values: new() { { "Composition", array } },
             units: new() { { "Composition", "" } });
 
         // Act
-        var property = _parser.CreateModelPropertyPublic("Composition", mockCom, "Stream", "S-01", new[] { "Composition" });
+        dynamic property = _parser.DoCreateModelProperty("Composition", mockCom, "Stream", "S-01", new[] { "Composition" });
 
         // Assert
         Assert.NotNull(property);
@@ -163,14 +163,14 @@ public class DwsimModelParserComTests
     public void CreateModelProperty_WithReadOnlyProperty_ShouldSetReadOnlyTrue()
     {
         // Arrange
-        var mockCom = MockDwsimProxy.Create(
+        dynamic mockCom = MockDwsimProxy.Create(
             writeProps: ["Temperature"],
             readProps: ["Temperature", "Density"],
             values: new() { { "Density", 1000.0 } },
             units: new() { { "Density", "kg/m3" } });
 
         // Act
-        var property = _parser.CreateModelPropertyPublic("Density", mockCom, "Stream", "S-01", new[] { "Temperature" });
+        dynamic property = _parser.DoCreateModelProperty("Density", mockCom, "Stream", "S-01", new[] { "Temperature" });
 
         // Assert
         Assert.NotNull(property);
@@ -184,11 +184,11 @@ public class DwsimModelParserComTests
         {
         }
 
-        public List<SimulatorModelRevisionDataProperty> ExtractNodePropertiesFromComPublic(
+        public List<SimulatorModelRevisionDataProperty> DoExtractNodePropertiesFromCom(
             dynamic obj, string objectType, string nodeName)
             => ExtractNodePropertiesFromCom(obj, objectType, nodeName);
 
-        public SimulatorModelRevisionDataProperty? CreateModelPropertyPublic(
+        public SimulatorModelRevisionDataProperty? DoCreateModelProperty(
             string propertyKey, dynamic obj, string objectType, string objectName, dynamic writeProperties)
             => CreateModelProperty(propertyKey, obj, objectType, objectName, writeProperties);
     }
