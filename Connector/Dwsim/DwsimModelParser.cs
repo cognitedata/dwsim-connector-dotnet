@@ -287,17 +287,6 @@ public class DwsimModelParser
                 .GroupBy(g => g.Element("Name")!.Value)
                 .ToDictionary(g => g.Key, g => g.First());
 
-            // Get simulation objects dictionary from COM model for property extraction
-            dynamic? simObjectsDict = null;
-            try
-            {
-                simObjectsDict = sim.SimulationObjects;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Could not access SimulationObjects from COM model: {EMessage}", ex.Message);
-            }
-
             foreach (XElement simObj in simObjects)
             {
                 token.ThrowIfCancellationRequested();
@@ -321,25 +310,41 @@ public class DwsimModelParser
                     if (node == null)
                         continue;
 
-                    // Extract properties from COM object if available
-                    if (simObjectsDict != null)
+                    // Extract properties from COM object using GetFlowsheetSimulationObject
+                    // This method takes the Tag (display name) as parameter, not the internal ComponentName
+                    // https://dwsim.org/api_help/html/M_DWSIM_Interfaces_IFlowsheet_GetFlowsheetSimulationObject.htm
+                    string nodeName = node.Name ?? objName;
+                    try
                     {
-                        try
+                        dynamic? comObject = sim.GetFlowsheetSimulationObject(nodeName);
+                        if (comObject != null)
                         {
-                            dynamic comObject = simObjectsDict[objName];
-                            if (comObject != null)
+                            // Update object type using ProductName (human-friendly name) if available
+                            try
                             {
-                                List<SimulatorModelRevisionDataProperty> properties =
-                                    ExtractNodePropertiesFromCom(comObject, node.Type ?? "Unknown", node.Name ?? objName);
-                                node.Properties = properties;
-                                _logger.LogDebug("Extracted {PropCount} properties for node {NodeName}",
-                                    properties.Count, node.Name);
+                                string? productName = comObject.ProductName?.ToString();
+                                if (!string.IsNullOrEmpty(productName))
+                                    node.Type = EnsureMaxLength(productName, _modelParsingConfig.MaxNodeTypeLength);
                             }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug("Could not get ProductName for {NodeName}: {EMessage}", nodeName, ex.Message);
+                            }
+
+                            List<SimulatorModelRevisionDataProperty> properties =
+                                ExtractNodePropertiesFromCom(comObject, node.Type ?? "Unknown", nodeName);
+                            node.Properties = properties;
+                            _logger.LogDebug("Extracted {PropCount} properties for node {NodeName}",
+                                properties.Count, nodeName);
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            _logger.LogDebug("Could not extract properties for {ObjName}: {EMessage}", objName, ex.Message);
+                            _logger.LogWarning("Could not get COM object for {NodeName}", nodeName);
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("Could not extract properties for {NodeName}: {EMessage}", nodeName, ex.Message);
                     }
 
                     // Ensure at least one property exists for each node
