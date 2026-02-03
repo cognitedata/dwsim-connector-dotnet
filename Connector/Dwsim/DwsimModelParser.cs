@@ -102,6 +102,72 @@ public class DwsimModelParser
     }
 
     /// <summary>
+    /// Parses the DWSIM model and returns the flowsheet as SimulatorModelRevisionDataFlowsheet.
+    /// This is the main orchestration method that combines XML parsing, COM property extraction,
+    /// edge generation, and thermodynamic data extraction.
+    /// </summary>
+    /// <param name="sim">The DWSIM flowsheet COM object</param>
+    /// <param name="filePath">Path to the DWXMZ file</param>
+    /// <param name="token">Cancellation token</param>
+    /// <returns>Flowsheet object or null if parsing fails</returns>
+    public virtual SimulatorModelRevisionDataFlowsheet? Parse(dynamic sim, string filePath, CancellationToken token)
+    {
+        _logger.LogDebug("DWSIM model parsing started for: {FilePath}", filePath);
+
+        string? xmlFilePath = null;
+
+        try
+        {
+            // Validate the provided file path
+            if (!ValidateFilePath(filePath))
+                return null;
+
+            // Extract XML from DWXMZ file
+            xmlFilePath = ExtractXmlFromDwxmz(filePath);
+            XDocument doc = XDocument.Load(xmlFilePath);
+
+            // Parse nodes with COM property extraction
+            _logger.LogDebug("Parsing simulation objects with properties");
+            List<SimulatorModelRevisionDataObjectNode> nodes = ParseNodesWithProperties(doc, sim, token);
+            _logger.LogDebug("Extracted {NodesCount} nodes from the model", nodes.Count);
+
+            // Generate edges from XML connections
+            _logger.LogDebug("Generating flowsheet edges");
+            IEnumerable<SimulatorModelRevisionDataObjectEdge> edges = GenerateFlowsheetEdgesFromXml(doc, nodes, _logger);
+
+            // Extract thermodynamic data
+            _logger.LogDebug("Extracting thermodynamic data");
+            SimulatorModelRevisionDataThermodynamic thermodynamics = ExtractThermodynamicDataFromXml(doc, _logger);
+
+            var flowsheet = new SimulatorModelRevisionDataFlowsheet
+            {
+                SimulatorObjectNodes = nodes,
+                SimulatorObjectEdges = edges,
+                Thermodynamics = thermodynamics
+            };
+
+            _logger.LogDebug("DWSIM model parsing completed successfully");
+            return flowsheet;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Model parsing was cancelled");
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while parsing DWSIM model: {EMessage}", e.Message);
+            return null;
+        }
+        finally
+        {
+            // Always cleanup temporary files
+            if (!string.IsNullOrEmpty(xmlFilePath))
+                CleanupTempFiles(xmlFilePath);
+        }
+    }
+
+    /// <summary>
     /// Extracts XML file from DWXMZ archive
     /// </summary>
     /// <param name="filePath">Path to the DWXMZ file</param>
@@ -188,7 +254,110 @@ public class DwsimModelParser
     }
 
     /// <summary>
-    /// Parses nodes from XML document
+    /// Parses nodes from XML document and extracts properties from COM objects.
+    /// This is an instance method that combines XML parsing with COM property extraction.
+    /// </summary>
+    /// <param name="doc">Parsed XML document</param>
+    /// <param name="sim">DWSIM flowsheet COM object</param>
+    /// <param name="token">Cancellation token</param>
+    /// <returns>List of parsed nodes with properties</returns>
+    private List<SimulatorModelRevisionDataObjectNode> ParseNodesWithProperties(XDocument doc, dynamic sim, CancellationToken token)
+    {
+        var nodes = new List<SimulatorModelRevisionDataObjectNode>();
+
+        try
+        {
+            // Parse SimulationObjects from XML
+            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
+            _logger.LogDebug("Found {Count} simulation objects in XML", simObjects.Count);
+
+            // Parse GraphicObjects from XML
+            List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
+            _logger.LogDebug("Found {Count} graphic objects in XML", graphicObjects.Count);
+
+            // Create a lookup for graphic objects by Name
+            Dictionary<string, XElement> graphicObjectLookup = graphicObjects
+                .Where(g => g.Element("Name")?.Value != null)
+                .GroupBy(g => g.Element("Name")!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Get simulation objects dictionary from COM model for property extraction
+            dynamic? simObjectsDict = null;
+            try
+            {
+                simObjectsDict = sim.SimulationObjects;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Could not access SimulationObjects from COM model: {EMessage}", ex.Message);
+            }
+
+            foreach (XElement simObj in simObjects)
+            {
+                token.ThrowIfCancellationRequested();
+
+                try
+                {
+                    string? objName = simObj.Element("ComponentName")?.Value ??
+                                     simObj.Element("Name")?.Value;
+
+                    if (string.IsNullOrEmpty(objName))
+                    {
+                        _logger.LogDebug("Skipping simulation object without ComponentName or Name");
+                        continue;
+                    }
+
+                    // Find corresponding graphic object
+                    graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
+
+                    // Create node from XML
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, _logger);
+                    if (node == null)
+                        continue;
+
+                    // Extract properties from COM object if available
+                    if (simObjectsDict != null)
+                    {
+                        try
+                        {
+                            dynamic comObject = simObjectsDict[objName];
+                            if (comObject != null)
+                            {
+                                List<SimulatorModelRevisionDataProperty> properties =
+                                    ExtractNodePropertiesFromCom(comObject, node.Type ?? "Unknown", node.Name ?? objName);
+                                node.Properties = properties;
+                                _logger.LogDebug("Extracted {PropCount} properties for node {NodeName}",
+                                    properties.Count, node.Name);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug("Could not extract properties for {ObjName}: {EMessage}", objName, ex.Message);
+                        }
+                    }
+
+                    nodes.Add(node);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse simulation object, skipping node");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse nodes with properties");
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Parses nodes from XML document (static, XML-only version without COM property extraction)
     /// </summary>
     /// <param name="doc">Parsed XML document</param>
     /// <param name="logger">Logger for diagnostic messages</param>
