@@ -18,6 +18,11 @@ extractor:
   image: logo.png
 
 versions:
+  "1.0.0-alpha-127":
+    description: Multiple updates to model library
+    changelog:
+      changed:  
+        - "The `Cognite.Simulator.Utils` version has been updated to open up for future enhancements, e.g. model flowsheet extraction."
   "1.0.0-alpha-126":
     description: Auto-discarding of old simulation runs & config updates
     changelog:
