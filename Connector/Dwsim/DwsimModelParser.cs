@@ -831,7 +831,7 @@ public class DwsimModelParser
             bool isReadOnly = writeProperties is null || !((IList)writeProperties).Contains(propertyKey);
 
             // Apply API length limit to property name
-            string safeName = EnsureMaxLength(GetHumanReadablePropertyName(propertyKey), _modelParsingConfig.MaxPropertyNameLength);
+            string safeName = EnsureMaxLength(GetHumanReadablePropertyName(propertyKey) ?? propertyKey, _modelParsingConfig.MaxPropertyNameLength);
 
             return new SimulatorModelRevisionDataProperty
             {
