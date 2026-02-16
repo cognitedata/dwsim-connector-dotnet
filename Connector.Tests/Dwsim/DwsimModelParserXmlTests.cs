@@ -500,6 +500,59 @@ public class DwsimModelParserXmlTests : IDisposable
 
     #endregion
 
+    #region Parse Method Tests
+
+    [Fact]
+    public void Parse_WithValidShowerMixer_ShouldReturnCompleteFlowsheet()
+    {
+        string dwxmzPath = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
+        var flowsheet = _parser.Parse(new MockFlowsheetSim(), dwxmzPath, CancellationToken.None);
+
+        Assert.NotNull(flowsheet);
+
+        var nodes = flowsheet.SimulatorObjectNodes.ToList();
+        Assert.Equal(4, nodes.Count);
+        Assert.Contains(nodes, n => n.Id == HotWaterId);
+        Assert.Contains(nodes, n => n.Id == ColdWaterId);
+        Assert.Contains(nodes, n => n.Id == MixerId);
+        Assert.Contains(nodes, n => n.Id == ShowerWaterId);
+        Assert.Equal(3, nodes.Count(n => n.Type == "Material Stream"));
+        Assert.Equal(1, nodes.Count(n => n.Type == "Mixer"));
+        Assert.All(nodes, n => Assert.NotEmpty(n.Properties));
+
+        var edges = flowsheet.SimulatorObjectEdges.ToList();
+        Assert.Equal(3, edges.Count);
+        Assert.Contains(edges, e => e.SourceId == HotWaterId && e.TargetId == MixerId);
+        Assert.Contains(edges, e => e.SourceId == ColdWaterId && e.TargetId == MixerId);
+        Assert.Contains(edges, e => e.SourceId == MixerId && e.TargetId == ShowerWaterId);
+        Assert.All(edges, e =>
+            Assert.Equal(SimulatorModelRevisionDataConnectionType.Material, e.ConnectionType));
+
+        Assert.NotNull(flowsheet.Thermodynamics);
+        Assert.Contains("Water", flowsheet.Thermodynamics.Components);
+        Assert.Contains("Steam Tables (IAPWS-IF97)", flowsheet.Thermodynamics.PropertyPackages);
+    }
+
+    [Fact]
+    public void Parse_WithInvalidFilePath_ShouldReturnNull()
+    {
+        var result = _parser.Parse(new MockFlowsheetSim(), "/nonexistent/model.dwxmz", CancellationToken.None);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Parse_WithCancelledToken_ShouldThrowOperationCanceledException()
+    {
+        string dwxmzPath = Path.Combine(_testDataPath, "ShowerMixer.dwxmz");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            _parser.Parse(new MockFlowsheetSim(), dwxmzPath, cts.Token));
+    }
+
+    #endregion
+
     private class TestableParser(
         ILogger<DwsimClient> logger,
         Dictionary<string, string> propMap,
@@ -514,4 +567,13 @@ public class DwsimModelParserXmlTests : IDisposable
     {
         // Mock unit system for testing without DWSIM dependencies
     }
+}
+
+/// <summary>
+/// Mock flowsheet sim returning null for all COM objects.
+/// Public for cross-assembly dynamic dispatch from DwsimModelParser.
+/// </summary>
+public class MockFlowsheetSim
+{
+    public dynamic? GetFlowsheetSimulationObject(string name) => null;
 }
