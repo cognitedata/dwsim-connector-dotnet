@@ -149,12 +149,7 @@ public class DwsimModelParser
             _logger.LogDebug("DWSIM model parsing completed successfully");
             return flowsheet;
         }
-        catch (OperationCanceledException)
-        {
-            _logger.LogInformation("Model parsing was cancelled");
-            throw;
-        }
-        catch (Exception e)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             _logger.LogError(e, "Error while parsing DWSIM model: {EMessage}", e.Message);
             return null;
