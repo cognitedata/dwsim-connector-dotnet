@@ -337,11 +337,7 @@ public class DwsimModelParser
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to parse nodes with properties");
         }
