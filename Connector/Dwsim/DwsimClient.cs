@@ -193,32 +193,44 @@ namespace Connector.Dwsim
         {
             try
             {
-                _logger.LogInformation("Extracting model information for {ExternalId}", state.ExternalId);
-                SimulatorModelRevisionDataFlowsheet? flowsheet = ExtractFlowsheet(state, token);
+                bool canRead = CanOpenModel(state.FilePath);
+                state.CanRead = canRead;
+                _logger.LogInformation("{Result} model revision {ExternalId} in DWSIM",
+                    canRead ? "Successfully opened" : "Failed to open", state.ExternalId);
 
-                if (flowsheet != null)
+                if (canRead)
                 {
-                    state.ParsingInfo.Flowsheets = [flowsheet];
-                    state.ParsingInfo.RevisionDataInfo = [];
-                    state.CanRead = true;
                     state.ParsingInfo.SetSuccess();
-                    _logger.LogInformation("Successfully parsed model revision {ExternalId} in DWSIM", state.ExternalId);
+
+                    try
+                    {
+                        var flowsheet = ExtractFlowsheet(state, token);
+                        if (flowsheet != null)
+                        {
+                            state.ParsingInfo.Flowsheets = [flowsheet];
+                            state.ParsingInfo.RevisionDataInfo = [];
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogWarning("Flowsheet extraction failed for {ExternalId}, skipping: {Error}",
+                            state.ExternalId, e.Message);
+                    }
                 }
                 else
                 {
-                    state.ParsingInfo.SetFailure("Model parsing returned null");
-                    state.CanRead = false;
+                    state.ParsingInfo.SetFailure();
                 }
             }
             catch (DwsimException de) when (!de.CanRetry)
             {
-                _logger.LogError("DWSIM error while parsing model {ExternalId}: {Error}", state.ExternalId, de.Message);
+                _logger.LogError("DWSIM error while opening model {ExternalId}: {Error}", state.ExternalId, de.Message);
                 state.ParsingInfo.SetFailure(de.Message);
                 state.CanRead = false;
             }
             catch (Exception e)
             {
-                _logger.LogWarning("Error parsing model {ExternalId}, will retry: {Error}", state.ExternalId, e.Message);
+                _logger.LogError("Error while opening revision {ExternalId}: {Error}", state.ExternalId, e.Message);
                 state.ParsingInfo.SetFailure();
                 state.CanRead = false;
             }
