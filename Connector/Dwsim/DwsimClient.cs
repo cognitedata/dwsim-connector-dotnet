@@ -211,7 +211,7 @@ namespace Connector.Dwsim
                             state.ParsingInfo.RevisionDataInfo = [];
                         }
                     }
-                    catch (Exception e)
+                    catch (Exception e) when (e is not OperationCanceledException)
                     {
                         _logger.LogWarning("Flowsheet extraction failed for {ExternalId}, skipping: {Error}",
                             state.ExternalId, e.Message);
