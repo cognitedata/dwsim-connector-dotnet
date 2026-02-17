@@ -39,6 +39,7 @@ namespace Connector.Dwsim
         public string Version { get; init; }
         private readonly Dictionary<string, string> _propMap = new Dictionary<string, string>();
         private readonly UnitConverter _unitConverter;
+        private readonly string _dwsimInstallationPath;
 
         // Lock to prevent concurrent access to simulator resources
         private readonly object _simulatorLock = new object();
@@ -48,16 +49,13 @@ namespace Connector.Dwsim
             : base(logger, config.Automation)
         {
             _logger = logger;
-            var dwsimInstallationPath = config.Automation.DwsimInstallationPath;
-            if (dwsimInstallationPath == null)
-            {
-                throw new DwsimException("DWSIM installation path is not set");
-            }
-            string dllPath = Path.Combine(dwsimInstallationPath, "DWSIM.Automation.dll");
+            _dwsimInstallationPath = config.Automation.DwsimInstallationPath
+                ?? throw new DwsimException("DWSIM installation path is not set");
+            string dllPath = Path.Combine(_dwsimInstallationPath, "DWSIM.Automation.dll");
             FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(dllPath);
             Version = fvi.FileVersion != null ? fvi.FileVersion : "N/A";
 
-            string propsDll = Path.Combine(dwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
+            string propsDll = Path.Combine(_dwsimInstallationPath, "DWSIM.FlowsheetBase.dll");
             Assembly assembly = Assembly.LoadFrom(propsDll);
             ResourceManager rm = new ResourceManager("DWSIM.FlowsheetBase.Properties", assembly);
             var resourceSet = rm.GetResourceSet(CultureInfo.InvariantCulture, true, false);
@@ -74,7 +72,7 @@ namespace Connector.Dwsim
                 }
             }
 
-            _unitConverter = new UnitConverter(dwsimInstallationPath);
+            _unitConverter = new UnitConverter(_dwsimInstallationPath);
         }
 
         protected override void PreShutdown()
@@ -158,21 +156,77 @@ namespace Connector.Dwsim
             }
         }
 
-        public Task ExtractModelInformation(DefaultModelFilestate state, CancellationToken _token)
+        /// <summary>
+        /// Extracts the full flowsheet from a DWSIM model file
+        /// </summary>
+        /// <param name="modelFile">The model file state</param>
+        /// <param name="token">Cancellation token</param>
+        /// <returns>Parsed flowsheet or null if parsing fails</returns>
+        private SimulatorModelRevisionDataFlowsheet? ExtractFlowsheet(DefaultModelFilestate modelFile, CancellationToken token)
+        {
+            _logger.LogDebug("Opening model revision {ExternalId} for flowsheet extraction", modelFile.ExternalId);
+            lock (_simulatorLock)
+            {
+                try
+                {
+                    Initialize();
+                    dynamic model = OpenModel(modelFile.FilePath);
+
+                    var modelParser = new DwsimModelParser(_logger, _propMap, _dwsimInstallationPath);
+                    SimulatorModelRevisionDataFlowsheet? flowsheet = modelParser.Parse(model, modelFile.FilePath, token);
+
+                    if (flowsheet == null)
+                    {
+                        _logger.LogWarning("Model parsing returned null for {ExternalId}", modelFile.ExternalId);
+                    }
+
+                    return flowsheet;
+                }
+                finally
+                {
+                    Shutdown();
+                }
+            }
+        }
+
+        public Task ExtractModelInformation(DefaultModelFilestate state, CancellationToken token)
         {
             try
             {
                 bool canRead = CanOpenModel(state.FilePath);
                 state.CanRead = canRead;
-                _logger.LogInformation("{Result} model revision {ExternalId} in DWSIM", canRead ? "Successfully opened" : "Failed to open", state.ExternalId);
+                _logger.LogInformation("{Result} model revision {ExternalId} in DWSIM",
+                    canRead ? "Successfully opened" : "Failed to open", state.ExternalId);
+
                 if (canRead)
                 {
                     state.ParsingInfo.SetSuccess();
+
+                    try
+                    {
+                        var flowsheet = ExtractFlowsheet(state, token);
+                        if (flowsheet != null)
+                        {
+                            state.ParsingInfo.Flowsheets = [flowsheet];
+                            state.ParsingInfo.RevisionDataInfo = [];
+                        }
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        _logger.LogWarning("Flowsheet extraction failed for {ExternalId}, skipping: {Error}",
+                            state.ExternalId, e.Message);
+                    }
                 }
                 else
                 {
                     state.ParsingInfo.SetFailure();
                 }
+            }
+            catch (DwsimException de) when (!de.CanRetry)
+            {
+                _logger.LogError("DWSIM error while opening model {ExternalId}: {Error}", state.ExternalId, de.Message);
+                state.ParsingInfo.SetFailure(de.Message);
+                state.CanRead = false;
             }
             catch (Exception e)
             {

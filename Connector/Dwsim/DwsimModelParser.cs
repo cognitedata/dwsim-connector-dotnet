@@ -18,6 +18,8 @@ using System.Collections;
 using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml.Linq;
 using CogniteSdk.Alpha;
 using Microsoft.Extensions.Logging;
@@ -102,6 +104,64 @@ public class DwsimModelParser
     }
 
     /// <summary>
+    /// Parses the DWSIM model and returns the flowsheet as SimulatorModelRevisionDataFlowsheet.
+    /// This is the main orchestration method that combines XML parsing, COM property extraction,
+    /// edge generation, and thermodynamic data extraction.
+    /// </summary>
+    /// <param name="sim">The DWSIM flowsheet COM object</param>
+    /// <param name="filePath">Path to the DWXMZ file</param>
+    /// <param name="token">Cancellation token</param>
+    /// <returns>Flowsheet object or null if parsing fails</returns>
+    public virtual SimulatorModelRevisionDataFlowsheet? Parse(dynamic sim, string filePath, CancellationToken token)
+    {
+        _logger.LogDebug("DWSIM model parsing started for: {FilePath}", filePath);
+
+        string? xmlFilePath = null;
+
+        try
+        {
+            if (!ValidateFilePath(filePath))
+                return null;
+
+            xmlFilePath = ExtractXmlFromDwxmz(filePath);
+            XDocument doc = XDocument.Load(xmlFilePath);
+
+            _logger.LogDebug("Parsing simulation objects with properties");
+            List<SimulatorModelRevisionDataObjectNode> nodes = ParseNodesWithProperties(doc, sim, token);
+            _logger.LogDebug("Extracted {NodesCount} nodes from the model", nodes.Count);
+
+            _logger.LogDebug("Generating flowsheet edges");
+            IEnumerable<SimulatorModelRevisionDataObjectEdge> edges = GenerateFlowsheetEdgesFromXml(doc, nodes, _logger, _modelParsingConfig);
+
+            // TODO: Remove EnsureAtLeastOneEdge call when API lifts the minItems restriction
+            edges = EnsureAtLeastOneEdge(edges, nodes);
+
+            _logger.LogDebug("Extracting thermodynamic data");
+            SimulatorModelRevisionDataThermodynamic thermodynamics = ExtractThermodynamicDataFromXml(doc, _logger, _modelParsingConfig);
+
+            var flowsheet = new SimulatorModelRevisionDataFlowsheet
+            {
+                SimulatorObjectNodes = nodes,
+                SimulatorObjectEdges = edges,
+                Thermodynamics = thermodynamics
+            };
+
+            _logger.LogDebug("DWSIM model parsing completed successfully");
+            return flowsheet;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogError(e, "Error while parsing DWSIM model: {EMessage}", e.Message);
+            return null;
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(xmlFilePath))
+                CleanupTempFiles(xmlFilePath);
+        }
+    }
+
+    /// <summary>
     /// Extracts XML file from DWXMZ archive
     /// </summary>
     /// <param name="filePath">Path to the DWXMZ file</param>
@@ -117,10 +177,8 @@ public class DwsimModelParser
 
         try
         {
-            // Extract the DWXMZ file
             ZipFile.ExtractToDirectory(filePath, tempDir);
 
-            // Find the XML file
             string[] xmlFiles = Directory.GetFiles(tempDir, "*.xml");
             if (xmlFiles.Length == 0)
                 throw new FileNotFoundException("No XML file found in DWXMZ archive");
@@ -130,7 +188,6 @@ public class DwsimModelParser
         }
         catch
         {
-            // Clean up on error
             if (Directory.Exists(tempDir))
                 Directory.Delete(tempDir, true);
             throw;
@@ -188,24 +245,128 @@ public class DwsimModelParser
     }
 
     /// <summary>
-    /// Parses nodes from XML document
+    /// Parses nodes from XML document and extracts properties from COM objects.
+    /// This is an instance method that combines XML parsing with COM property extraction.
     /// </summary>
     /// <param name="doc">Parsed XML document</param>
-    /// <param name="logger">Logger for diagnostic messages</param>
-    /// <returns>List of parsed nodes</returns>
-    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(XDocument doc, ILogger? logger = null)
+    /// <param name="sim">DWSIM flowsheet COM object</param>
+    /// <param name="token">Cancellation token</param>
+    /// <returns>List of parsed nodes with properties</returns>
+    private List<SimulatorModelRevisionDataObjectNode> ParseNodesWithProperties(XDocument doc, dynamic sim, CancellationToken token)
     {
         var nodes = new List<SimulatorModelRevisionDataObjectNode>();
 
         try
         {
-            // Parse SimulationObjects - only direct children of SimulationObjects element
+            List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
+            _logger.LogDebug("Found {Count} simulation objects in XML", simObjects.Count);
+
+            List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
+            _logger.LogDebug("Found {Count} graphic objects in XML", graphicObjects.Count);
+
+            Dictionary<string, XElement> graphicObjectLookup = graphicObjects
+                .Where(g => g.Element("Name")?.Value != null)
+                .GroupBy(g => g.Element("Name")!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (XElement simObj in simObjects)
+            {
+                token.ThrowIfCancellationRequested();
+
+                try
+                {
+                    string? objName = simObj.Element("ComponentName")?.Value ??
+                                     simObj.Element("Name")?.Value;
+
+                    if (string.IsNullOrEmpty(objName))
+                    {
+                        _logger.LogDebug("Skipping simulation object without ComponentName or Name");
+                        continue;
+                    }
+
+                    graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
+
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, _logger, _modelParsingConfig);
+                    if (node == null)
+                        continue;
+
+                    // Extract properties from COM object using GetFlowsheetSimulationObject
+                    // This method takes the Tag (display name) as parameter, not the internal ComponentName
+                    // https://dwsim.org/api_help/html/M_DWSIM_Interfaces_IFlowsheet_GetFlowsheetSimulationObject.htm
+                    string nodeName = node.Name ?? objName;
+                    try
+                    {
+                        dynamic? comObject = sim.GetFlowsheetSimulationObject(nodeName);
+                        if (comObject != null)
+                        {
+                            try
+                            {
+                                string? productName = comObject.ProductName?.ToString();
+                                if (!string.IsNullOrEmpty(productName))
+                                    node.Type = EnsureMaxLength(productName, _modelParsingConfig.MaxNodeTypeLength);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug("Could not get ProductName for {NodeName}: {EMessage}", nodeName, ex.Message);
+                            }
+
+                            List<SimulatorModelRevisionDataProperty> properties =
+                                ExtractNodePropertiesFromCom(comObject, node.Type ?? "Unknown", nodeName);
+                            node.Properties = properties;
+                            _logger.LogDebug("Extracted {PropCount} properties for node {NodeName}",
+                                properties.Count, nodeName);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Could not get COM object for {NodeName}", nodeName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("Could not extract properties for {NodeName}: {EMessage}", nodeName, ex.Message);
+                    }
+
+                    // TODO: Remove EnsureAtLeastOneProperty call when API lifts the minItems restriction
+                    node.Properties = EnsureAtLeastOneProperty(node.Properties?.ToList() ?? []);
+
+                    nodes.Add(node);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse simulation object, skipping node");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to parse nodes with properties");
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Parses nodes from XML document (static, XML-only version without COM property extraction)
+    /// </summary>
+    /// <param name="doc">Parsed XML document</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <param name="config">Optional parsing configuration for length limits</param>
+    /// <returns>List of parsed nodes</returns>
+    public static List<SimulatorModelRevisionDataObjectNode> ParseNodesFromXml(
+        XDocument doc,
+        ILogger? logger = null,
+        DwsimModelParsingConfig? config = null)
+    {
+        config ??= new DwsimModelParsingConfig();
+
+        var nodes = new List<SimulatorModelRevisionDataObjectNode>();
+
+        try
+        {
             List<XElement> simObjects = doc.Root?.Element("SimulationObjects")?.Elements("SimulationObject").ToList() ?? [];
 
-            // Parse GraphicObjects - scope to GraphicObjects parent element
             List<XElement> graphicObjects = doc.Root?.Element("GraphicObjects")?.Elements("GraphicObject").ToList() ?? [];
 
-            // Create a lookup for graphic objects by Name, handling duplicates by taking first occurrence
             Dictionary<string, XElement> graphicObjectLookup = graphicObjects
                 .Where(g => g.Element("Name")?.Value != null)
                 .GroupBy(g => g.Element("Name")!.Value)
@@ -224,10 +385,9 @@ public class DwsimModelParser
                         continue;
                     }
 
-                    // Find corresponding graphic object
                     graphicObjectLookup.TryGetValue(objName, out XElement? graphicObj);
 
-                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, logger);
+                    SimulatorModelRevisionDataObjectNode? node = CreateNodeFromXml(simObj, graphicObj, logger, config);
                     if (node != null)
                         nodes.Add(node);
                 }
@@ -251,29 +411,37 @@ public class DwsimModelParser
     /// <param name="simObj">Simulation object XML element</param>
     /// <param name="graphicObj">Graphic object XML element</param>
     /// <param name="logger">Logger for diagnostic messages</param>
+    /// <param name="config">Optional parsing configuration for length limits</param>
     /// <returns>Created node or null if creation fails</returns>
-    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(XElement simObj, XElement? graphicObj, ILogger? logger = null)
+    public static SimulatorModelRevisionDataObjectNode? CreateNodeFromXml(
+        XElement simObj,
+        XElement? graphicObj,
+        ILogger? logger = null,
+        DwsimModelParsingConfig? config = null)
     {
+        config ??= new DwsimModelParsingConfig();
+
         try
         {
-            // Get basic object information from XML
             string? objectId = simObj.Element("ComponentName")?.Value ?? simObj.Element("Name")?.Value;
             string? objectType = simObj.Element("Type")?.Value?.Split('.').LastOrDefault();
             string? objectName = graphicObj?.Element("Tag")?.Value ?? objectId;
 
-            // Skip nodes without required properties
             if (string.IsNullOrEmpty(objectId) || string.IsNullOrEmpty(objectType))
                 return null;
 
             // Normalize stream types to standardized names (e.g., "MaterialStream" -> "Material Stream")
             string normalizedType = NormalizeStreamType(objectType);
 
-            // Create node with basic information
+            string safeId = EnsureMaxLength(objectId, config.MaxNodeIdLength);
+            string? safeName = objectName != null ? EnsureMaxLength(objectName, config.MaxNodeNameLength) : null;
+            string safeType = EnsureMaxLength(normalizedType, config.MaxNodeTypeLength);
+
             var node = new SimulatorModelRevisionDataObjectNode
             {
-                Id = objectId,
-                Name = objectName,
-                Type = normalizedType,
+                Id = safeId,
+                Name = safeName,
+                Type = safeType,
                 Properties = new List<SimulatorModelRevisionDataProperty>(),
                 GraphicalObject = CreateGraphicalObjectFromXml(graphicObj)
             };
@@ -293,12 +461,16 @@ public class DwsimModelParser
     /// <param name="doc">Parsed XML document</param>
     /// <param name="nodes">List of parsed nodes to reference for edge creation</param>
     /// <param name="logger">Logger for diagnostic messages</param>
+    /// <param name="config">Optional parsing configuration for length limits</param>
     /// <returns>Collection of edges representing connections between nodes</returns>
     public static IEnumerable<SimulatorModelRevisionDataObjectEdge> GenerateFlowsheetEdgesFromXml(
         XDocument doc,
         List<SimulatorModelRevisionDataObjectNode> nodes,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        DwsimModelParsingConfig? config = null)
     {
+        config ??= new DwsimModelParsingConfig();
+
         if (nodes == null || nodes.Count == 0)
             return [];
 
@@ -330,10 +502,14 @@ public class DwsimModelParser
                 try
                 {
                     string? sourceName = graphicObj.Element("Name")?.Value;
-                    if (string.IsNullOrEmpty(sourceName) || !nodesByName.TryGetValue(sourceName, out SimulatorModelRevisionDataObjectNode? sourceNode))
+                    if (string.IsNullOrEmpty(sourceName))
                         continue;
 
-                    // Parse output connections from XML
+                    // Apply EnsureMaxLength to lookup key to match processed node IDs
+                    string safeSourceName = EnsureMaxLength(sourceName, config.MaxNodeIdLength);
+                    if (!nodesByName.TryGetValue(safeSourceName, out SimulatorModelRevisionDataObjectNode? sourceNode))
+                        continue;
+
                     IEnumerable<XElement>? outputConnectors = graphicObj.Element("OutputConnectors")?.Elements("Connector");
                     if (outputConnectors == null)
                         continue;
@@ -344,16 +520,24 @@ public class DwsimModelParser
                             continue;
 
                         string? connectedId = connector.Attribute("AttachedToObjID")?.Value;
-                        if (string.IsNullOrEmpty(connectedId) || !nodesByName.TryGetValue(connectedId, out SimulatorModelRevisionDataObjectNode? targetNode))
+                        if (string.IsNullOrEmpty(connectedId))
+                            continue;
+
+                        // Apply EnsureMaxLength to lookup key to match processed node IDs
+                        string safeConnectedId = EnsureMaxLength(connectedId, config.MaxNodeIdLength);
+                        if (!nodesByName.TryGetValue(safeConnectedId, out SimulatorModelRevisionDataObjectNode? targetNode))
                             continue;
 
                         SimulatorModelRevisionDataConnectionType connectionType = DetermineConnectionType(sourceNode, targetNode);
+
+                        string edgeId = EnsureMaxLength($"{sourceNode.Id}_{targetNode.Id}", config.MaxEdgeIdLength);
+
                         var edge = new SimulatorModelRevisionDataObjectEdge
                         {
-                            Id = $"{sourceName}_{connectedId}",
+                            Id = edgeId,
                             Name = $"{sourceNode.Name} -> {targetNode.Name}",
-                            SourceId = sourceName,
-                            TargetId = connectedId,
+                            SourceId = sourceNode.Id,
+                            TargetId = targetNode.Id,
                             ConnectionType = connectionType
                         };
                         edges.Add(edge);
@@ -365,7 +549,6 @@ public class DwsimModelParser
                 }
             }
 
-            // Remove duplicate edges
             edges = RemoveDuplicateEdges(edges, logger);
             logger?.LogDebug("Generated {EdgesCount} edges from XML connections", edges.Count);
         }
@@ -384,15 +567,12 @@ public class DwsimModelParser
         SimulatorModelRevisionDataObjectNode sourceNode,
         SimulatorModelRevisionDataObjectNode targetNode)
     {
-        // Check if it's an energy stream
         if (sourceNode.Type == StandardEnergyStreamType || targetNode.Type == StandardEnergyStreamType)
             return SimulatorModelRevisionDataConnectionType.Energy;
 
-        // Check if it's a material stream
         if (sourceNode.Type == StandardMaterialStreamType || targetNode.Type == StandardMaterialStreamType)
             return SimulatorModelRevisionDataConnectionType.Material;
 
-        // Default to information for other connections
         return SimulatorModelRevisionDataConnectionType.Information;
     }
 
@@ -427,7 +607,6 @@ public class DwsimModelParser
         if (graphicObj == null)
             return null;
 
-        // Only create position if both X and Y are present and can be parsed
         SimulatorModelRevisionDataPosition? position = null;
         string? xElement = graphicObj.Element("X")?.Value;
         string? yElement = graphicObj.Element("Y")?.Value;
@@ -464,15 +643,20 @@ public class DwsimModelParser
     /// </summary>
     /// <param name="doc">Parsed XML document</param>
     /// <param name="logger">Logger for diagnostic messages</param>
+    /// <param name="config">Optional parsing configuration for length limits</param>
     /// <returns>Thermodynamic data containing components and property packages</returns>
-    public static SimulatorModelRevisionDataThermodynamic ExtractThermodynamicDataFromXml(XDocument doc, ILogger? logger = null)
+    public static SimulatorModelRevisionDataThermodynamic ExtractThermodynamicDataFromXml(
+        XDocument doc,
+        ILogger? logger = null,
+        DwsimModelParsingConfig? config = null)
     {
+        config ??= new DwsimModelParsingConfig();
+
         var components = new List<string>();
         var propertyPackages = new List<string>();
 
         try
         {
-            // Extract components from Compounds section
             IEnumerable<XElement>? compoundElements = doc.Root?.Element("Compounds")?.Elements("Compound");
             if (compoundElements != null)
             {
@@ -480,11 +664,10 @@ public class DwsimModelParser
                 {
                     string? componentName = compound.Element("Name")?.Value;
                     if (!string.IsNullOrEmpty(componentName))
-                        components.Add(componentName);
+                        components.Add(EnsureMaxLength(componentName, config.MaxThermodynamicStringLength));
                 }
             }
 
-            // Extract property packages from PropertyPackages section
             IEnumerable<XElement>? propertyPackageElements = doc.Root?.Element("PropertyPackages")?.Elements("PropertyPackage");
             if (propertyPackageElements != null)
             {
@@ -492,7 +675,7 @@ public class DwsimModelParser
                 {
                     string? packageName = package.Element("ComponentName")?.Value;
                     if (!string.IsNullOrEmpty(packageName))
-                        propertyPackages.Add(packageName);
+                        propertyPackages.Add(EnsureMaxLength(packageName, config.MaxThermodynamicStringLength));
                 }
             }
 
@@ -533,7 +716,6 @@ public class DwsimModelParser
             dynamic? writeProperties = obj.GetProperties(1);
             dynamic? readProperties = obj.GetProperties(3);
 
-            // Combine all properties, avoiding duplicates
             var allProperties = new HashSet<string>();
             if (writeProperties != null)
                 foreach (string prop in writeProperties) allProperties.Add(prop);
@@ -591,7 +773,6 @@ public class DwsimModelParser
     {
         try
         {
-            // Get property value from COM object
             // https://dwsim.org/api_help/html/M_DWSIM_SharedClasses_UnitOperations_BaseClass_GetPropertyValue.htm
             dynamic value = obj.GetPropertyValue(propertyKey);
             if (value == null)
@@ -603,9 +784,11 @@ public class DwsimModelParser
 
             bool isReadOnly = writeProperties is null || !((IList)writeProperties).Contains(propertyKey);
 
+            string safeName = EnsureMaxLength(GetHumanReadablePropertyName(propertyKey) ?? propertyKey, _modelParsingConfig.MaxPropertyNameLength);
+
             return new SimulatorModelRevisionDataProperty
             {
-                Name = GetHumanReadablePropertyName(propertyKey),
+                Name = safeName,
                 ValueType = simulatorValue.Type,
                 Value = simulatorValue,
                 Unit = GetUnitReference(obj, propertyKey),
@@ -724,13 +907,111 @@ public class DwsimModelParser
                 return null;
         }
     }
+
+    #region API Constraints
+
+    /// <summary>
+    /// Ensures a string is at most maxLength characters long. If longer, creates a SHA256 hash.
+    /// </summary>
+    /// <param name="value">The string to check</param>
+    /// <param name="maxLength">Maximum allowed length</param>
+    /// <returns>Original string if within limit, otherwise a hash of the string</returns>
+    private static string EnsureMaxLength(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value;
+
+        // Create a hash of the full value to ensure uniqueness
+        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+
+        // Convert to base64 and remove special characters to make it URL-safe
+        string hash = Convert.ToBase64String(hashBytes)
+            .Replace("+", "")
+            .Replace("/", "")
+            .Replace("=", "");
+
+        // Take first maxLength characters of the hash (ensures uniqueness)
+        return hash[..Math.Min(hash.Length, maxLength)];
+    }
+
+    /// <summary>
+    /// Ensures at least one property exists for a node.
+    /// TODO: Remove this workaround when API lifts the minItems restriction on properties.
+    /// </summary>
+    /// <param name="properties">The list of properties to check</param>
+    /// <returns>Original list if not empty, otherwise a list with a placeholder property</returns>
+    private static List<SimulatorModelRevisionDataProperty> EnsureAtLeastOneProperty(
+        List<SimulatorModelRevisionDataProperty> properties)
+    {
+        if (properties.Count > 0)
+            return properties;
+
+        properties.Add(new SimulatorModelRevisionDataProperty
+        {
+            Name = "_placeholder",
+            ValueType = SimulatorValueType.STRING,
+            Value = SimulatorValue.Create("No properties available"),
+            ReadOnly = true,
+            ReferenceObject = new Dictionary<string, string>
+            {
+                { "objectType", "Placeholder" },
+                { "objectName", "Placeholder" },
+                { "objectProperty", "_placeholder" }
+            }
+        });
+
+        return properties;
+    }
+
+    /// <summary>
+    /// Ensures at least one edge exists in the flowsheet.
+    /// TODO: Remove this workaround when API lifts the minItems restriction on edges.
+    /// </summary>
+    /// <param name="edges">The collection of edges to check</param>
+    /// <param name="nodes">The list of nodes (used to create placeholder edge if needed)</param>
+    /// <returns>Original edges if not empty, otherwise a collection with a placeholder edge</returns>
+    private static IEnumerable<SimulatorModelRevisionDataObjectEdge> EnsureAtLeastOneEdge(
+        IEnumerable<SimulatorModelRevisionDataObjectEdge> edges,
+        List<SimulatorModelRevisionDataObjectNode> nodes)
+    {
+        List<SimulatorModelRevisionDataObjectEdge> edgeList = edges.ToList();
+        if (edgeList.Count > 0)
+            return edgeList;
+
+        if (nodes.Count > 0 && nodes[0].Id != null)
+        {
+            edgeList.Add(new SimulatorModelRevisionDataObjectEdge
+            {
+                Id = "_placeholder",
+                Name = "Placeholder Edge",
+                SourceId = nodes[0].Id,
+                TargetId = nodes[0].Id,
+                ConnectionType = SimulatorModelRevisionDataConnectionType.Information
+            });
+        }
+
+        return edgeList;
+    }
+
+    #endregion
 }
 
 /// <summary>
-/// Configuration class for DWSIM model parsing
+/// Configuration class for DWSIM model parsing.
+/// Default values are based on the Simulators API constraints.
 /// </summary>
 public class DwsimModelParsingConfig
 {
-    // will be used later when we start to extract node properties
+    // Item count limits
+    public int MaxNodesPerFlowsheet { get; set; } = 2000;
+    public int MaxEdgesPerFlowsheet { get; set; } = 2000;
     public int MaxPropertiesPerNode { get; set; } = 100;
+
+    // Character length limits for identifiers and names
+    public int MaxNodeIdLength { get; set; } = 50;
+    public int MaxNodeNameLength { get; set; } = 50;
+    public int MaxNodeTypeLength { get; set; } = 50;
+    public int MaxEdgeIdLength { get; set; } = 50;
+    public int MaxPropertyNameLength { get; set; } = 50;
+    public int MaxThermodynamicStringLength { get; set; } = 50;
 }
